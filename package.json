@@ -1,0 +1,19 @@
+{
+  "name": "smart-content-extractor-api",
+  "version": "1.0.0",
+  "description": "URL metadata, text, image and video extraction API",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
+    "axios": "^1.19.0",
+    "express": "^5.2.1",
+    "puppeteer-core": "^25.4.0"
+  }
+}
