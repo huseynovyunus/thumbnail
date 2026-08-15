@@ -622,11 +622,8 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     }
 
     const user = {
-        email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
-        plan: rapidPlanHeader.includes('pro') ? 'pro' :
-          rapidPlanHeader.includes('basic') ? 'basic' :
-          rapidPlanHeader.includes('ultra') ? 'ultra' :
-          'free'
+      email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
+      plan: userPlan
     };
     console.log(`🔑 RapidAPI Girişi: ${user.email} (Daxili Plan: ${user.plan.toUpperCase()})`);
 
