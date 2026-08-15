@@ -1,0 +1,158 @@
+openapi: 3.0.0
+
+info:
+  title: Smart Content Extractor
+  description: |
+    Smart Content Extractor is a powerful URL analysis and content extraction service 
+    that retrieves metadata, thumbnails, OpenGraph information, page content, images, 
+    links, and embedded media from websites.
+
+    Supports YouTube, TikTok, Vimeo, Instagram, and Dailymotion with automatic 
+    thumbnail extraction and embed generation.
+
+    Features:
+    - Website thumbnail extraction
+    - OpenGraph metadata extraction
+    - Title and description extraction
+    - Page text extraction
+    - Image and link extraction
+    - Video source detection
+    - Embed HTML generation
+    - Deep browser-based extraction
+    - Free, Basic, Pro and Ultra plans
+
+  version: 1.0.0
+
+servers:
+  - url: https://thumbnail-api-cez9.onrender.com
+
+paths:
+
+  /extract:
+    post:
+      summary: Extract website content
+      description: |
+        Extract metadata, thumbnail, OpenGraph data, text, images,
+        links and media information from a URL.
+
+      requestBody:
+        required: true
+
+        content:
+
+          application/json:
+            schema:
+              type: object
+
+              required:
+                - url
+
+              properties:
+
+                url:
+                  type: string
+                  example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                  description: Website URL to analyze
+
+                planType:
+                  type: string
+                  enum:
+                    - free
+                    - basic
+                    - pro
+                    - ultra
+                  example: pro
+                  description: Extraction plan level
+
+
+      responses:
+
+        "200":
+          description: Successful extraction
+
+          content:
+
+            application/json:
+              schema:
+
+                type: object
+
+                properties:
+
+                  status:
+                    type: string
+                    example: ok
+
+                  plan_type:
+                    type: string
+                    example: pro
+
+                  name:
+                    type: string
+                    example: Video title
+
+                  description:
+                    type: string
+                    example: Video description
+
+                  thumbnail_url:
+                    type: string
+                    example: https://example.com/image.jpg
+
+                  embed_html:
+                    type: string
+                    example: "<iframe></iframe>"
+
+                  is_video:
+                    type: boolean
+                    example: true
+
+                  deep_data:
+                    type: object
+
+                    properties:
+
+                      plan:
+                        type: string
+                        example: pro
+
+                      pageContent:
+                        type: string
+
+                      images:
+                        type: array
+                        items:
+                          type: string
+
+                      links:
+                        type: array
+                        items:
+                          type: object
+
+                          properties:
+
+                            text:
+                              type: string
+
+                            href:
+                              type: string
+
+                      videoSources:
+                        type: array
+                        items:
+                          type: string
+
+                      has_video_sources:
+                        type: boolean
+
+
+        "400":
+          description: Invalid URL
+
+
+        "403":
+          description: Premium plan required
+
+
+        "500":
+          description: Server error
