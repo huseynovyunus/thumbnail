@@ -568,7 +568,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     console.log("ALL HEADERS:", req.headers);
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
-    const requiredInternalPlan = planType || PRICING_PLANS.FREE.internal;
+    const requiredInternalPlan = planType || userPlan;
 
     if (!url) {
         return res.status(400).json({
