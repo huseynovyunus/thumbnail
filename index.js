@@ -565,6 +565,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
     // ----------------------------------------------------
     app.post('/extract', async (req, res) => {
+    console.log("ALL HEADERS:", req.headers);
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
     const requiredInternalPlan = planType || PRICING_PLANS.FREE.internal;
