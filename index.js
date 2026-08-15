@@ -609,7 +609,9 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
         req.headers['x-rapidapi-subscription-plan'] ||
         'free'
     ).toLowerCase();
-    
+        
+    console.log("PLAN HEADER:", rapidPlanHeader);
+        
     let userPlan = 'free';
     
     if (rapidPlanHeader.includes('ultra')) {
