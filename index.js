@@ -734,18 +734,17 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
         };
         
         res.status(200).json(responseBody);
-
     } catch (error) {
-        
         console.error('❌ Ümumi API Xətası:', error.message);
-    
-        return res.status(500).json({
-            status: 'critical_failed',
-            error: 'Kritik Daxili Server Xətası',
-            message: error.message
+
+        return res.status(200).json({
+            status: 'partial_success',
+            plan_type: user.plan,
+            error: error.message,
+            message: 'Daxili xəta oldu, amma plan və çıxarılan məlumat göstərilir.'
         });
-    
     }
+
 });
 
 console.log("SERVER BAŞLAYIR...");
