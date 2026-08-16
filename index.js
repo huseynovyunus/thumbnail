@@ -642,6 +642,9 @@ if (proxy) {
       email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
       plan: userPlan
     };
+    
+    console.log("PLAN HEADER:", rapidPlanHeader);
+    console.log("🔑 RapidAPI Girişi:", user.email, "(Daxili Plan:", userPlan.toUpperCase() + ")");
 
     // ----------------------------------------------------
     // 3. PLAN VƏ LİMİT CHECK
