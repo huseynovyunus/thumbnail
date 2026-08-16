@@ -337,6 +337,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
 
     const proxy = getRandomProxy();
     // TƏKMİLLƏŞDİRMƏ #1: Performans üçün kritik resursları blokla (Səhifə yüklənməsini sürətləndirir)
+    const sparticuzArgs = Array.isArray(chromium.args) ? chromium.args : [];                                                                                                                                                                                                                                                               
     let launchArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
