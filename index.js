@@ -335,30 +335,31 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
 
     console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir. Core + Sparticuz konfiqurasiyası.`);
 
-    const proxy = getRandomProxy();
-    // 🔴 Sparticuz Chromium args üçün Promise dəstəyi
-    let sparticuzArgs = [];
+const proxy = getRandomProxy();
 
-    try {
-    const resolvedArgs = await chromium.args;
+// Sparticuz chromium.args birbaşa massivdir
+let sparticuzArgs = Array.isArray(chromium.args) ? chromium.args : [];
 
-    if (Array.isArray(resolvedArgs)) {
-        sparticuzArgs = resolvedArgs;
-    }
-    } catch (err) {
-    console.warn(
-        "[Puppeteer]: chromium.args alınmadı:",
-        err.message
-    );
-    }
-                                                                         
-    let launchArgs = [
-    ...sparticuzArgs,
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gl-drawing-for-tests',
-    ];                                                             
+let launchArgs = [
+  ...sparticuzArgs,
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gl-drawing-for-tests',
+];
+
+let headlessMode = chromium.headless;
+
+if (proxy) {
+  console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy}`);
+  launchArgs.push(`--proxy-server=${proxy}`);
+}
+
+const browser = await puppeteer.launch({
+  args: launchArgs,
+  executablePath: await chromium.executablePath(), // bu Promise qaytarır
+  headless: headlessMode,
+});
 
     let headlessMode = chromium.headless;                                                                    
 
