@@ -605,7 +605,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
     // ----------------------------------------------------
     const rapidPlanHeader = (
-        req.headers['x-rapidapi-subscription-plan'] ||
+        req.headers['x-rapidapi-subscription'] ||
         'free'
     ).toLowerCase();
         
