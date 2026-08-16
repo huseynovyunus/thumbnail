@@ -353,13 +353,14 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     }
                                                                          
     let launchArgs = [
+    ...sparticuzArgs,
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gl-drawing-for-tests',
     ];                                                             
 
-    let headlessMode = true;                                                                     
+    let headlessMode = chromium.headless;                                                                    
 
     if (proxy) {
         console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy} (Launch Args-a əlavə edildi)`);
