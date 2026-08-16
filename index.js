@@ -358,7 +358,7 @@ if (proxy) {
     let executablePath = '';
 
     try {
-        executablePath = await chromium.executablePath();
+        executablePath = await chromium.executablePath;
 
         console.log("✅ Chromium path:", executablePath);
 
