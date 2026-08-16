@@ -376,7 +376,7 @@ if (proxy) {
    }                                                                
     // Launch Konfiqurasiyası
     const launchConfig = {
-        args: launchArgs, s
+        args: launchArgs,
         headless: true, 
         defaultViewport: chromium.defaultViewport,
         executablePath: executablePath, 
