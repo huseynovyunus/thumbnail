@@ -349,19 +349,17 @@ let headlessMode = chromium.headless;
 if (proxy) {
   console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy}`);
   launchArgs.push(`--proxy-server=${proxy}`);
-}
-
-const browser = await puppeteer.launch({
-  args: launchArgs,
-  executablePath: await chromium.executablePath(), // bu Promise qaytarır
-  headless: headlessMode,
-});                                                                 
+}                                                               
 
     if (proxy) {
         console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy} (Launch Args-a əlavə edildi)`);
         launchArgs.push(`--proxy-server=${proxy}`);
     }
-    
+
+    browser = await launchBrowserWithRetry(launchConfig);                                                                     
+
+    let browser = null;     
+                                                                         
     let executablePath = '';
     try {
         executablePath = await chromium.executablePath();
