@@ -14,6 +14,6 @@
     "@sparticuz/chromium": "^149.0.0",
     "axios": "^1.19.0",
     "express": "^5.2.1",
-    "puppeteer-core": "^25.4.0"
+    "puppeteer-core": "^25.7.0"
   }
 }
