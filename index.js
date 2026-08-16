@@ -355,7 +355,6 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
 
 
 let launchArgs = [
-  ...sparticuzArgs,
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
