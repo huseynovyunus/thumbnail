@@ -631,7 +631,6 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     };
     PLAN HEADER: pro
         🔑 RapidAPI Girişi: huseynovyunis359 (Daxili Plan: PRO)
-    console.log(`🔑 RapidAPI Girişi: ${user.email} (Daxili Plan: ${user.plan.toUpperCase()})`);
 
     // ----------------------------------------------------
     // 3. PLAN VƏ LİMİT CHECK
