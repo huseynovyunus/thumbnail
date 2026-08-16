@@ -335,10 +335,24 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
 
     console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir. Core + Sparticuz konfiqurasiyası.`);
 
-const proxy = getRandomProxy();
+    const proxy = getRandomProxy();
 
-// Sparticuz chromium.args birbaşa massivdir
-let sparticuzArgs = Array.isArray(chromium.args) ? chromium.args : [];
+    let sparticuzArgs = [];
+
+    try {
+    const args = await chromium.args;
+
+    if (Array.isArray(args)) {
+        sparticuzArgs = args;
+    }
+
+    } catch (err) {
+    console.warn(
+        "[Puppeteer]: chromium.args alınmadı:",
+        err.message
+    );
+   }
+
 
 let launchArgs = [
   ...sparticuzArgs,
