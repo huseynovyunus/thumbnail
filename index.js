@@ -632,8 +632,6 @@ if (proxy) {
       email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
       plan: userPlan
     };
-    PLAN HEADER: pro
-        🔑 RapidAPI Girişi: huseynovyunis359 (Daxili Plan: PRO)
 
     // ----------------------------------------------------
     // 3. PLAN VƏ LİMİT CHECK
