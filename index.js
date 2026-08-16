@@ -629,8 +629,6 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
       plan: userPlan
     };
     console.log(`🔑 RapidAPI Girişi: ${user.email} (Daxili Plan: ${user.plan.toUpperCase()})`);
-    // ✅ requiredInternalPlan indi düzgün təyin olunur
-    const requiredInternalPlan = planType || user.plan;
 
     // ----------------------------------------------------
     // 3. PLAN VƏ LİMİT CHECK
