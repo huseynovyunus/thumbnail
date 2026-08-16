@@ -338,12 +338,12 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     const proxy = getRandomProxy();
     // TƏKMİLLƏŞDİRMƏ #1: Performans üçün kritik resursları blokla (Səhifə yüklənməsini sürətləndirir)
     let launchArgs = [
-        ...chromium.args,
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gl-drawing-for-tests', 
-    ];
+    ...(chromium.args || []),
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gl-drawing-for-tests'
+    ];                                                                
     
     let headlessMode = chromium.headless; 
 
