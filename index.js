@@ -337,23 +337,6 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
 
     const proxy = getRandomProxy();
 
-    let sparticuzArgs = [];
-
-    try {
-    const args = await chromium.args;
-
-    if (Array.isArray(args)) {
-        sparticuzArgs = args;
-    }
-
-    } catch (err) {
-    console.warn(
-        "[Puppeteer]: chromium.args alınmadı:",
-        err.message
-    );
-   }
-
-
 let launchArgs = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
@@ -372,9 +355,7 @@ const browser = await puppeteer.launch({
   args: launchArgs,
   executablePath: await chromium.executablePath(), // bu Promise qaytarır
   headless: headlessMode,
-});
-
-    let headlessMode = chromium.headless;                                                                    
+});                                                                 
 
     if (proxy) {
         console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy} (Launch Args-a əlavə edildi)`);
