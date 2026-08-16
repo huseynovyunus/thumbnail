@@ -623,7 +623,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
         userPlan = 'basic';
     }
 
-    const requiredInternalPlan = planType || userPlan;    
+    const requiredInternalPlan = userPlan;    
 
     const user = {
       email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
