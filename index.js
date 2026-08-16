@@ -569,7 +569,6 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     console.log("ALL HEADERS:", req.headers);
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
-    const requiredInternalPlan = planType || userPlan;
 
     if (!url) {
         return res.status(400).json({
@@ -623,6 +622,8 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     else if (rapidPlanHeader.includes('basic')) {
         userPlan = 'basic';
     }
+
+    const requiredInternalPlan = planType || userPlan;    
 
     const user = {
       email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
