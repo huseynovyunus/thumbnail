@@ -356,18 +356,28 @@ if (proxy) {
     }                                                                      
                                                                          
     let executablePath = '';
+
     try {
         executablePath = await chromium.executablePath();
+
+        console.log("✅ Chromium path:", executablePath);
+
+        if (!executablePath) {
+        throw new Error("Chromium path boş qaytarıldı");
+        }
+
     } catch (pathError) {
-        console.error(`❌ Chromium yolu hesablanmadı: ${pathError.message}`);
-        result.deepData.error = `PUPPETEER LAUNCH PATH ERROR: Chromium yolu tapılmadı/hesablanmadı.`;
-        return result;
-    }
-    
+       console.error("❌ Chromium PATH ERROR:", pathError);
+
+       result.deepData.error =
+           `PUPPETEER LAUNCH PATH ERROR: ${pathError.message}`;
+
+       return result;
+   }                                                                
     // Launch Konfiqurasiyası
     const launchConfig = {
         args: launchArgs, 
-        headless: headlessMode, 
+        headless: true, 
         defaultViewport: chromium.defaultViewport,
         executablePath: executablePath, 
         ignoreHTTPSErrors: true,
