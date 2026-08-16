@@ -353,11 +353,7 @@ if (proxy) {
     if (proxy) {
         console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy} (Launch Args-a əlavə edildi)`);
         launchArgs.push(`--proxy-server=${proxy}`);
-    }
-
-    browser = await launchBrowserWithRetry(launchConfig);                                                                     
-
-    let browser = null;     
+    }                                                                      
                                                                          
     let executablePath = '';
     try {
