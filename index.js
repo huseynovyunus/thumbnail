@@ -3,6 +3,9 @@ const express = require('express');
 const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
+const Redis = require('ioredis');
+
+const redis = new Redis(process.env.REDIS_URL);
 
 const app = express();
 
@@ -120,6 +123,41 @@ const PLAN_ACCESS = {
 // ------------------------------------------------------------------
 // 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
 // ------------------------------------------------------------------
+
+async function checkRateLimit(userId, plan) {
+
+    const planConfig = Object.values(PRICING_PLANS)
+        .find(p => p.internal === plan);
+
+    if (!planConfig) {
+        throw new Error("Plan tapılmadı");
+    }
+
+    const limit = planConfig.dailyLimit;
+
+    const key = `rate:${userId}:${plan}`;
+
+    const count = await redis.incr(key);
+
+    if (count === 1) {
+        await redis.expire(key, 86400);
+    }
+
+    if (count > limit) {
+
+        const ttl = await redis.ttl(key);
+
+        return {
+            allowed:false,
+            retryAfter:ttl
+        };
+    }
+
+    return {
+        allowed:true,
+        remaining:limit-count
+    };
+}
 
 function ipToLong(ip) {
     const parts = ip.split('.');
@@ -642,6 +680,21 @@ if (proxy) {
       email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
       plan: userPlan
     };
+
+    const rate = await checkRateLimit(
+    user.email,
+    user.plan
+    );
+
+    if (!rate.allowed) {
+
+    return res.status(429).json({
+        status:"rate_limit_exceeded",
+        message:"Gündəlik limit bitib.",
+        retryAfter:rate.retryAfter
+    });
+
+    }
     
     console.log("PLAN HEADER:", rapidPlanHeader);
     console.log("🔑 RapidAPI Girişi:", user.email, "(Daxili Plan:", userPlan.toUpperCase() + ")");
