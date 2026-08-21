@@ -1,4 +1,6 @@
 // Asılılıqları daxil edirik
+require('dotenv').config();
+
 const express = require('express');
 const axios = require('axios');
 const puppeteer = require('puppeteer-core');
@@ -7,6 +9,27 @@ const chromium = require('@sparticuz/chromium');
 const app = express();
 
 app.use(express.json());
+
+function checkApiKey(req) {
+    const apiKey = req.headers["x-api-key"];
+
+    console.log("CHECK API KEY ÇAĞIRILDI");
+    console.log("GƏLƏN KEY:", apiKey);
+    console.log("ENV:", process.env.API_KEYS);
+
+    if (!apiKey) {
+        return false;
+    }
+
+    const keys = process.env.API_KEYS
+        ? process.env.API_KEYS.split(",")
+        : [];
+
+        console.log("KEY ARRAY:", keys);
+        console.log("NƏTİCƏ:", keys.includes(apiKey));
+
+    return keys.includes(apiKey);
+}
 
 
 // ------------------------------------------------------------------
@@ -32,8 +55,8 @@ const PRICING_PLANS = {
         name: 'Free',
         internal: 'free',
         accessLevel: 0,
-        dailyLimit: 50,
-        monthlyLimit: 1500,
+        dailyLimit: 3,
+        monthlyLimit: 5,
         price: 0,
         features: [
             'Thumbnail çıxarışı',
@@ -120,6 +143,44 @@ const PLAN_ACCESS = {
 // ------------------------------------------------------------------
 // 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
 // ------------------------------------------------------------------
+
+async function checkRateLimit(userId, plan) {
+
+    if (!global.rateLimits) {
+        global.rateLimits = {};
+    }
+
+    const key = userId || "guest";
+    const limit = plan === "pro" ? 10000 : 50;
+
+    if (!global.rateLimits[key]) {
+        global.rateLimits[key] = {
+            count: 0,
+            createdAt: Date.now()
+        };
+    }
+
+    const data = global.rateLimits[key];
+
+    if (Date.now() - data.createdAt > 86400000) {
+        data.count = 0;
+        data.createdAt = Date.now();
+    }
+
+    data.count++;
+
+    if (data.count > limit) {
+        return {
+            allowed: false,
+            retryAfter: 86400
+        };
+    }
+
+    return {
+        allowed: true,
+        remaining: limit - data.count
+    };
+}
 
 function ipToLong(ip) {
     const parts = ip.split('.');
@@ -283,7 +344,6 @@ async function extractDailyMotionData(url) {
     }
 }
 
-
 // TƏKMİLLƏŞDİRMƏ #4: Crash-proof üçün Puppeteer Launch Retry Sistemi
 async function launchBrowserWithRetry(launchConfig) {
     const MAX_RETRIES = 3;
@@ -336,35 +396,49 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir. Core + Sparticuz konfiqurasiyası.`);
 
     const proxy = getRandomProxy();
-    // TƏKMİLLƏŞDİRMƏ #1: Performans üçün kritik resursları blokla (Səhifə yüklənməsini sürətləndirir)
-    let launchArgs = [
-        ...chromium.args,
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gl-drawing-for-tests', 
-    ];
-    
-    let headlessMode = chromium.headless; 
+
+let launchArgs = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gl-drawing-for-tests',
+];
+
+let headlessMode = chromium.headless;
+
+if (proxy) {
+  console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy}`);
+  launchArgs.push(`--proxy-server=${proxy}`);
+}                                                               
 
     if (proxy) {
         console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy} (Launch Args-a əlavə edildi)`);
         launchArgs.push(`--proxy-server=${proxy}`);
-    }
-    
+    }                                                                      
+                                                                         
     let executablePath = '';
+
     try {
         executablePath = await chromium.executablePath();
+
+        console.log("✅ Chromium path:", executablePath);
+
+        if (!executablePath) {
+        throw new Error("Chromium path boş qaytarıldı");
+        }
+
     } catch (pathError) {
-        console.error(`❌ Chromium yolu hesablanmadı: ${pathError.message}`);
-        result.deepData.error = `PUPPETEER LAUNCH PATH ERROR: Chromium yolu tapılmadı/hesablanmadı.`;
-        return result;
-    }
-    
+       console.error("❌ Chromium PATH ERROR:", pathError);
+
+       result.deepData.error =
+           `PUPPETEER LAUNCH PATH ERROR: ${pathError.message}`;
+
+       return result;
+   }                                                                
     // Launch Konfiqurasiyası
     const launchConfig = {
-        args: launchArgs, 
-        headless: headlessMode, 
+        args: launchArgs,
+        headless: true, 
         defaultViewport: chromium.defaultViewport,
         executablePath: executablePath, 
         ignoreHTTPSErrors: true,
@@ -565,10 +639,21 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
     // ----------------------------------------------------
     app.post('/extract', async (req, res) => {
-        console.log("ALL HEADERS:", req.headers);
-        const url = req.body?.url || req.query.url;
-        const planType = req.body?.planType || req.query.planType;
-        const requiredInternalPlan = planType || PRICING_PLANS.FREE.internal;
+    console.log("YENİ KOD İŞLƏYİR");
+    console.log("ALL HEADERS:", req.headers);
+
+    if (!checkApiKey(req)) {
+        console.log("API KEY BLOKLANDI");
+
+        return res.status(401).json({
+            error: "Invalid API key"
+        });
+    }
+
+    console.log("API KEY QƏBUL EDİLDİ");
+
+    const url = req.body?.url || req.query.url;
+    const planType = req.body?.planType || req.query.planType;
 
     if (!url) {
         return res.status(400).json({
@@ -605,12 +690,12 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
     // ----------------------------------------------------
     const rapidPlanHeader = (
-        req.headers['x-rapidapi-subscription-plan'] ||
         req.headers['x-rapidapi-subscription'] ||
-        req.headers['x-rapidapi-plan'] ||
         'free'
     ).toLowerCase();
-    
+        
+    console.log("PLAN HEADER:", rapidPlanHeader);
+        
     let userPlan = 'free';
     
     if (rapidPlanHeader.includes('ultra')) {
@@ -623,11 +708,30 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
         userPlan = 'basic';
     }
 
+    const requiredInternalPlan = userPlan;    
+
     const user = {
-        email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
-        plan: userPlan
+      email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
+      plan: userPlan
     };
-    console.log(`🔑 RapidAPI Girişi: ${user.email} (Daxili Plan: ${user.plan.toUpperCase()})`);
+
+    const rate = await checkRateLimit(
+    user.email,
+    user.plan
+    );
+
+    if (!rate.allowed) {
+
+    return res.status(429).json({
+        status:"rate_limit_exceeded",
+        message:"Gündəlik limit bitib.",
+        retryAfter:rate.retryAfter
+    });
+
+    }
+    
+    console.log("PLAN HEADER:", rapidPlanHeader);
+    console.log("🔑 RapidAPI Girişi:", user.email, "(Daxili Plan:", userPlan.toUpperCase() + ")");
 
     // ----------------------------------------------------
     // 3. PLAN VƏ LİMİT CHECK
@@ -733,18 +837,17 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {    con
         };
         
         res.status(200).json(responseBody);
-
     } catch (error) {
-        
         console.error('❌ Ümumi API Xətası:', error.message);
-    
-        return res.status(500).json({
-            status: 'critical_failed',
-            error: 'Kritik Daxili Server Xətası',
-            message: error.message
+
+        return res.status(200).json({
+            status: 'partial_success',
+            plan_type: user.plan,
+            error: error.message,
+            message: 'Daxili xəta oldu, amma plan və çıxarılan məlumat göstərilir.'
         });
-    
     }
+
 });
 
 console.log("SERVER BAŞLAYIR...");
