@@ -3,7 +3,6 @@ const express = require('express');
 const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
-const Redis = require('ioredis');
 
 const redis = new Redis(process.env.REDIS_URL);
 
