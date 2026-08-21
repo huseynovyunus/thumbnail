@@ -1,14 +1,35 @@
 // Asılılıqları daxil edirik
+require('dotenv').config();
+
 const express = require('express');
 const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 
-const redis = new Redis(process.env.REDIS_URL);
-
 const app = express();
 
 app.use(express.json());
+
+function checkApiKey(req) {
+    const apiKey = req.headers["x-api-key"];
+
+    console.log("CHECK API KEY ÇAĞIRILDI");
+    console.log("GƏLƏN KEY:", apiKey);
+    console.log("ENV:", process.env.API_KEYS);
+
+    if (!apiKey) {
+        return false;
+    }
+
+    const keys = process.env.API_KEYS
+        ? process.env.API_KEYS.split(",")
+        : [];
+
+        console.log("KEY ARRAY:", keys);
+        console.log("NƏTİCƏ:", keys.includes(apiKey));
+
+    return keys.includes(apiKey);
+}
 
 
 // ------------------------------------------------------------------
@@ -34,8 +55,8 @@ const PRICING_PLANS = {
         name: 'Free',
         internal: 'free',
         accessLevel: 0,
-        dailyLimit: 50,
-        monthlyLimit: 1500,
+        dailyLimit: 5,
+        monthlyLimit: 20,
         price: 0,
         features: [
             'Thumbnail çıxarışı',
@@ -125,36 +146,39 @@ const PLAN_ACCESS = {
 
 async function checkRateLimit(userId, plan) {
 
-    const planConfig = Object.values(PRICING_PLANS)
-        .find(p => p.internal === plan);
-
-    if (!planConfig) {
-        throw new Error("Plan tapılmadı");
+    if (!global.rateLimits) {
+        global.rateLimits = {};
     }
 
-    const limit = planConfig.dailyLimit;
+    const key = userId || "guest";
+    const limit = plan === "pro" ? 10000 : 50;
 
-    const key = `rate:${userId}:${plan}`;
-
-    const count = await redis.incr(key);
-
-    if (count === 1) {
-        await redis.expire(key, 86400);
+    if (!global.rateLimits[key]) {
+        global.rateLimits[key] = {
+            count: 0,
+            createdAt: Date.now()
+        };
     }
 
-    if (count > limit) {
+    const data = global.rateLimits[key];
 
-        const ttl = await redis.ttl(key);
+    if (Date.now() - data.createdAt > 86400000) {
+        data.count = 0;
+        data.createdAt = Date.now();
+    }
 
+    data.count++;
+
+    if (data.count > limit) {
         return {
-            allowed:false,
-            retryAfter:ttl
+            allowed: false,
+            retryAfter: 86400
         };
     }
 
     return {
-        allowed:true,
-        remaining:limit-count
+        allowed: true,
+        remaining: limit - data.count
     };
 }
 
@@ -617,6 +641,17 @@ if (proxy) {
     app.post('/extract', async (req, res) => {
     console.log("YENİ KOD İŞLƏYİR");
     console.log("ALL HEADERS:", req.headers);
+
+    if (!checkApiKey(req)) {
+        console.log("API KEY BLOKLANDI");
+
+        return res.status(401).json({
+            error: "Invalid API key"
+        });
+    }
+
+    console.log("API KEY QƏBUL EDİLDİ");
+
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
 
