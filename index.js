@@ -11,28 +11,21 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    // Oxunan header-lar: x-api-key üstünlük, yoxdursa x-rapidapi-key
-    const apiKey = (req.headers["x-api-key"] || req.headers["x-rapidapi-key"] || '').trim();
+    const apiKey = String(
+        req.headers["x-api-key"] || req.headers["x-rapidapi-key"] || ''
+    ).trim();
 
-    // Çıxış üçün allowedKeys-i env-dən götür və boşluqları təmizlə
     const allowedKeys = process.env.API_KEYS
         ? process.env.API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
         : [];
 
-    console.log("CHECK API KEY ÇAĞIRILDI");
-    // İstehsalat üçün həqiqi açarı yazdırmayın — burada maskalanmış formada göstərilir
-    console.log("GƏLƏN KEY:", apiKey ? '***hidden***' : null);
-    console.log("ENV API_KEYS mövcuddur:", allowedKeys.length > 0);
+    console.log("HEADERLAR:", req.headers);
+    console.log("GƏLƏN KEY VAR:", !!apiKey);
+    console.log("GƏLƏN KEY UZUNLUĞU:", apiKey.length);
     console.log("İCAZƏLİ KEY SAYI:", allowedKeys.length);
+    console.log("İCAZƏLİ KEY UZUNLUQLARI:", allowedKeys.map(k => k.length));
 
-    if (!apiKey) {
-        return false;
-    }
-
-    const allowed = allowedKeys.includes(apiKey);
-    console.log("UYĞUNDUR:", allowed);
-
-    return allowed;
+    return allowedKeys.includes(apiKey);
 }
 
 // ------------------------------------------------------------------
