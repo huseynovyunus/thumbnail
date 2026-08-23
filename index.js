@@ -11,26 +11,22 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey = req.headers["x-api-key"];
+    const apiKey = String(
+        req.headers["x-api-key"] || req.headers["x-rapidapi-key"] || ''
+    ).trim();
 
-    console.log("CHECK API KEY ÇAĞIRILDI");
-    console.log("GƏLƏN KEY:", apiKey);
-    console.log("ENV:", process.env.API_KEYS);
-
-    if (!apiKey) {
-        return false;
-    }
-
-    const keys = process.env.API_KEYS
-        ? process.env.API_KEYS.split(",")
+    const allowedKeys = process.env.API_KEYS
+        ? process.env.API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
         : [];
 
-        console.log("KEY ARRAY:", keys);
-        console.log("NƏTİCƏ:", keys.includes(apiKey));
+    console.log("HEADERLAR:", req.headers);
+    console.log("GƏLƏN KEY VAR:", !!apiKey);
+    console.log("GƏLƏN KEY UZUNLUĞU:", apiKey.length);
+    console.log("İCAZƏLİ KEY SAYI:", allowedKeys.length);
+    console.log("İCAZƏLİ KEY UZUNLUQLARI:", allowedKeys.map(k => k.length));
 
-    return keys.includes(apiKey);
+    return allowedKeys.includes(apiKey);
 }
-
 
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
