@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey = String(req.headers["x-api-key"] || "").trim();
+    const apiKey = req.headers["x-api-key"] || req.headers["x-rapidapi-key"];
 
     const allowedKeys = process.env.API_KEYS
         ? process.env.API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
