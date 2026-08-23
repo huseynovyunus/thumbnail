@@ -55,8 +55,8 @@ const PRICING_PLANS = {
         name: 'Free',
         internal: 'free',
         accessLevel: 0,
-        dailyLimit: 3,
-        monthlyLimit: 5,
+        dailyLimit: 5,
+        monthlyLimit: 20,
         price: 0,
         features: [
             'Thumbnail çıxarışı',
