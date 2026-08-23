@@ -16,6 +16,8 @@ function checkApiKey(req) {
     console.log("CHECK API KEY ÇAĞIRILDI");
     console.log("GƏLƏN KEY:", apiKey);
     console.log("ENV:", process.env.API_KEYS);
+    console.log("İCAZƏLİ KEYLƏR:", allowedKeys);
+    console.log("UYĞUNDUR:", allowedKeys.includes(apiKey));
 
     if (!apiKey) {
         return false;
