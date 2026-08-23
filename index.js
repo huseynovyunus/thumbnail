@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey = req.headers["x-api-key"];
+    const apiKey = req.headers["x-rapidapi-key"];
 
     console.log("CHECK API KEY ÇAĞIRILDI");
     console.log("GƏLƏN KEY:", apiKey);
