@@ -11,17 +11,19 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey = req.headers["x-api-key"] || req.headers["x-rapidapi-key"];
+    const apiKey = String(
+        req.headers["x-api-key"] ||
+        req.headers["x-rapidapi-key"] ||
+        ""
+    ).trim();
 
     const allowedKeys = process.env.API_KEYS
-        ? process.env.API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
+        ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
         : [];
 
-    console.log("HEADERLAR:", req.headers);
     console.log("GƏLƏN KEY VAR:", !!apiKey);
     console.log("GƏLƏN KEY UZUNLUĞU:", apiKey.length);
     console.log("İCAZƏLİ KEY SAYI:", allowedKeys.length);
-    console.log("İCAZƏLİ KEY UZUNLUQLARI:", allowedKeys.map(k => k.length));
 
     return allowedKeys.includes(apiKey);
 }
