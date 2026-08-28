@@ -11,28 +11,19 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const rapidKey = req.headers["x-rapidapi-key"];
+    // RapidAPI-nin göndərdiyi açarı oxuyuruq
+    const rapidKey = req.headers["x-rapidapi-key"] || req.headers["X-RapidAPI-Key"];
 
-    // RapidAPI özü istifadəçini yoxlayır
     if (rapidKey) {
-        console.log("RapidAPI KEY qəbul edildi");
+        console.log("✅ RapidAPI KEY qəbul edildi");
         return true;
     }
 
-    const apiKey = String(
-        req.headers["x-api-key"] || ""
-    ).trim();
-
-    const allowedKeys = process.env.API_KEYS
-        ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
-        : [];
-
-    console.log("GƏLƏN KEY VAR:", !!apiKey);
-    console.log("GƏLƏN KEY UZUNLUĞU:", apiKey.length);
-    console.log("İCAZƏLİ KEY SAYI:", allowedKeys.length);
-
-    return allowedKeys.includes(apiKey);
+    // Əgər RapidAPI açarı yoxdursa, giriş qadağandır
+    console.log("❌ Xəta: RapidAPI Key tapılmadı.");
+    return false;
 }
+
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
 // ------------------------------------------------------------------
