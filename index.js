@@ -23,10 +23,6 @@ function checkApiKey(req) {
     return false;
 }
 
-    // Əgər RapidAPI açarı yoxdursa və ya boşdursa, giriş qadağandır
-    console.log("❌ Xəta: RapidAPI Key tapılmadı.");
-    return false;
-
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
 // ------------------------------------------------------------------
