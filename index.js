@@ -11,13 +11,17 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    // Yalnız RapidAPI-nin göndərdiyi açarı oxuyuruq
     const rapidKey = req.headers["x-rapidapi-key"] || req.headers["X-RapidAPI-Key"];
 
     if (rapidKey && rapidKey.trim() !== "") {
-        console.log("✅ RapidAPI KEY qəbul edildi");
+        console.log("✅ RapidAPI KEY qəbul edildi:", rapidKey);
         return true;
     }
+
+    // Gələn bütün başlıqları görək ki, RapidAPI nə göndərir
+    console.log("❌ Xəta: Gələn Headers:", JSON.stringify(req.headers, null, 2));
+    return false;
+}
 
     // Əgər RapidAPI açarı yoxdursa və ya boşdursa, giriş qadağandır
     console.log("❌ Xəta: RapidAPI Key tapılmadı.");
