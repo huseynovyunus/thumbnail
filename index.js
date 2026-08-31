@@ -31,11 +31,6 @@ function checkApiKey(req) {
     return false;
 }
 
-    // Gələn bütün başlıqları görək ki, RapidAPI nə göndərir
-    console.log("❌ Xəta: Gələn Headers:", JSON.stringify(req.headers, null, 2));
-    return false;
-}
-
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
 // ------------------------------------------------------------------
