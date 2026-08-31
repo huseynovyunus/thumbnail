@@ -11,12 +11,25 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const rapidKey = req.headers["x-rapidapi-key"] || req.headers["X-RapidAPI-Key"];
+    const apiKey = req.headers["x-api-key"] || req.headers["x-rapidapi-key"];
 
-    if (rapidKey && rapidKey.trim() !== "") {
-        console.log("✅ RapidAPI KEY qəbul edildi:", rapidKey);
+    if (!apiKey) {
+        console.log("❌ API KEY yoxdur");
+        return false;
+    }
+
+    const validKeys = process.env.API_KEYS
+        .split(",")
+        .map(key => key.trim());
+
+    if (validKeys.includes(apiKey.trim())) {
+        console.log("✅ API KEY qəbul edildi");
         return true;
     }
+
+    console.log("❌ Səhv API KEY:", apiKey);
+    return false;
+}
 
     // Gələn bütün başlıqları görək ki, RapidAPI nə göndərir
     console.log("❌ Xəta: Gələn Headers:", JSON.stringify(req.headers, null, 2));
