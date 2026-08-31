@@ -11,31 +11,39 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey =
-        req.headers["x-rapidapi-key"] ||
-        req.headers["x-api-key"];
-
-    if (!apiKey) {
-        console.log("❌ API KEY yoxdur");
+    // 1. Server tərəfdə ENV yoxdursa -> 401 yox, server xətası kimi logla
+    if (!process.env.API_KEYS) {
+        console.error("❌ CRITICAL ERROR: process.env.API_KEYS təyin edilməyib!");
         return false;
     }
 
-    if (!process.env.API_KEYS) {
-        console.error("❌ API_KEYS tapılmadı");
+    const apiKey = req.headers["x-rapidapi-key"] || req.headers["x-api-key"];
+
+    if (!apiKey) {
+        console.log("❌ Sorğuda API KEY header-i tapılmadı");
         return false;
     }
 
     const validKeys = process.env.API_KEYS
         .split(",")
-        .map(k => k.trim());
+        .map(k => k.trim())
+        .filter(Boolean); // boş sətirləri təmizləyir
 
-    if (validKeys.includes(apiKey.trim())) {
-        console.log("✅ API KEY qəbul edildi");
+    const clientKey = apiKey.trim();
+
+    if (validKeys.includes(clientKey)) {
+        console.log("✅ API KEY doğrulandı");
         return true;
     }
 
-    console.log("❌ Səhv API KEY:", apiKey.slice(0, 6) + "...");
+    console.log("❌ Keçərsiz API KEY:", clientKey.slice(0, 6) + "...");
     return false;
+
+    }
+
+    if (!process.env.API_KEYS) {
+        console.error("❌ API_KEYS tapılmadı");
+        return false;
 }
 
 // ------------------------------------------------------------------
