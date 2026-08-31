@@ -11,23 +11,30 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    const apiKey = req.headers["x-api-key"] || req.headers["x-rapidapi-key"];
+    const apiKey =
+        req.headers["x-rapidapi-key"] ||
+        req.headers["x-api-key"];
 
     if (!apiKey) {
         console.log("❌ API KEY yoxdur");
         return false;
     }
 
+    if (!process.env.API_KEYS) {
+        console.error("❌ API_KEYS tapılmadı");
+        return false;
+    }
+
     const validKeys = process.env.API_KEYS
         .split(",")
-        .map(key => key.trim());
+        .map(k => k.trim());
 
     if (validKeys.includes(apiKey.trim())) {
         console.log("✅ API KEY qəbul edildi");
         return true;
     }
 
-    console.log("❌ Səhv API KEY:", apiKey);
+    console.log("❌ Səhv API KEY:", apiKey.slice(0, 6) + "...");
     return false;
 }
 
