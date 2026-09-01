@@ -10,18 +10,61 @@ const app = express();
 
 app.use(express.json());
 
-function checkApiKey(req) {
-    const apiKey =
-        req.headers["x-rapidapi-key"] ||
-        req.headers["x-api-key"];
+// Replace existing checkApiKey(req) with this improved function
 
-    if (!apiKey) {
+function checkApiKey(req) {
+    // Accept common header names
+    const rawHeader =
+        req.headers['x-rapidapi-key'] ||
+        req.headers['x-api-key'] ||
+        req.headers['authorization'];
+
+    if (!rawHeader) {
         console.log("❌ API KEY header-i tapılmadı");
-        return false;
+        return null;
+    }
+
+    // If Authorization: Bearer <token>, extract the token
+    let apiKey = rawHeader;
+    if (typeof apiKey === 'string' && apiKey.toLowerCase().startsWith('bearer ')) {
+        apiKey = apiKey.slice(7).trim();
+    }
+
+    // Allowed keys come from env (comma-separated) or single variable
+    const allowedFromList = (process.env.ALLOWED_API_KEYS || process.env.API_KEYS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    if (process.env.RAPIDAPI_KEY) {
+        allowedFromList.push(process.env.RAPIDAPI_KEY);
+    }
+    if (process.env.X_API_KEY) {
+        allowedFromList.push(process.env.X_API_KEY);
+    }
+
+    // If running in dev mode and a bypass flag is set, accept any key (useful locally)
+    if (process.env.DISABLE_API_KEY_CHECK === 'true') {
+        console.warn('⚠️ API key check disabled by DISABLE_API_KEY_CHECK=true');
+        console.log("✅ API KEY qəbul edildi (bypass):", (apiKey || '').slice(0, 6) + "...");
+        return { key: apiKey, user: 'dev-bypass' };
+    }
+
+    // If no allowed keys configured, log a warning and reject (safer)
+    if (allowedFromList.length === 0) {
+        console.warn('⚠️ Heç bir allowed API key konfiqurasiya edilməyib (ALLOWED_API_KEYS / API_KEYS / RAPIDAPI_KEY). Rejecting by default.');
+        return null;
+    }
+
+    const matched = allowedFromList.includes(apiKey);
+    if (!matched) {
+        console.log("❌ API KEY qəbul olunmadı:", (apiKey || '').slice(0, 6) + "...");
+        return null;
     }
 
     console.log("✅ API KEY qəbul edildi:", apiKey.slice(0, 6) + "...");
-    return true;
+    // return an object so caller can access the key/user if needed
+    return { key: apiKey };
 }
 
 // ------------------------------------------------------------------
