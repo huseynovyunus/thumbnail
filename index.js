@@ -10,60 +10,54 @@ const app = express();
 
 app.use(express.json());
 
-// Replace existing checkApiKey(req) with this improved function
-
 function checkApiKey(req) {
-    // Accept common header names
+    // 1) Read common header names
     const rawHeader =
         req.headers['x-rapidapi-key'] ||
         req.headers['x-api-key'] ||
-        req.headers['authorization'];
+        req.headers['authorization'] ||
+        null;
 
-    if (!rawHeader) {
-        console.log("❌ API KEY header-i tapılmadı");
+    // 2) Also allow body/query for testing (opt-in via env)
+    const allowQueryKey = process.env.ALLOW_KEY_IN_QUERY === 'true';
+    const rawQueryKey = allowQueryKey ? (req.body?.api_key || req.body?.key || req.query?.api_key || req.query?.key) : null;
+
+    const raw = rawHeader || rawQueryKey;
+    if (!raw) {
+        console.log("❌ API KEY header/dəyəri tapılmadı");
         return null;
     }
 
-    // If Authorization: Bearer <token>, extract the token
-    let apiKey = rawHeader;
-    if (typeof apiKey === 'string' && apiKey.toLowerCase().startsWith('bearer ')) {
-        apiKey = apiKey.slice(7).trim();
-    }
+    // Normalize and remove common prefixes
+    let apiKey = typeof raw === 'string' ? raw.trim() : raw;
+    apiKey = (apiKey || '').replace(/^(bearer|key)\s+/i, '').trim();
 
-    // Allowed keys come from env (comma-separated) or single variable
-    const allowedFromList = (process.env.ALLOWED_API_KEYS || process.env.API_KEYS || '')
+    // Build allowed list from env (trim each)
+    const allowedFromList = ((process.env.ALLOWED_API_KEYS || process.env.API_KEYS || '')
         .split(',')
         .map(s => s.trim())
-        .filter(Boolean);
+        .filter(Boolean));
 
-    if (process.env.RAPIDAPI_KEY) {
-        allowedFromList.push(process.env.RAPIDAPI_KEY);
-    }
-    if (process.env.X_API_KEY) {
-        allowedFromList.push(process.env.X_API_KEY);
-    }
+    if (process.env.RAPIDAPI_KEY) allowedFromList.push(process.env.RAPIDAPI_KEY.trim());
+    if (process.env.X_API_KEY) allowedFromList.push(process.env.X_API_KEY.trim());
 
-    // If running in dev mode and a bypass flag is set, accept any key (useful locally)
+    // Dev bypass
     if (process.env.DISABLE_API_KEY_CHECK === 'true') {
-        console.warn('⚠️ API key check disabled by DISABLE_API_KEY_CHECK=true');
-        console.log("✅ API KEY qəbul edildi (bypass):", (apiKey || '').slice(0, 6) + "...");
+        console.warn('⚠️ API key check disabled (DISABLE_API_KEY_CHECK=true)');
         return { key: apiKey, user: 'dev-bypass' };
     }
 
-    // If no allowed keys configured, log a warning and reject (safer)
     if (allowedFromList.length === 0) {
-        console.warn('⚠️ Heç bir allowed API key konfiqurasiya edilməyib (ALLOWED_API_KEYS / API_KEYS / RAPIDAPI_KEY). Rejecting by default.');
+        console.warn('⚠️ Heç bir allowed API key konfiqurasiya edilməyib. Rejecting by default.');
         return null;
     }
 
-    const matched = allowedFromList.includes(apiKey);
-    if (!matched) {
-        console.log("❌ API KEY qəbul olunmadı:", (apiKey || '').slice(0, 6) + "...");
+    if (!allowedFromList.includes(apiKey)) {
+        console.log("❌ API KEY qəbul olunmadı (masked):", (apiKey || '').slice(0,6)+"...");
         return null;
     }
 
-    console.log("✅ API KEY qəbul edildi:", apiKey.slice(0, 6) + "...");
-    // return an object so caller can access the key/user if needed
+    console.log("✅ API KEY qəbul edildi (masked):", apiKey.slice(0,6)+"...");
     return { key: apiKey };
 }
 
