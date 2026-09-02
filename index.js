@@ -669,6 +669,8 @@ if (proxy) {
     app.post('/extract', async (req, res) => {
     console.log("YENİ KOD İŞLƏYİR");
     console.log("ALL HEADERS:", req.headers);
+    console.log("YENİ KOD İŞLƏYİR");
+    console.log("ALL HEADERS:", req.headers);
 
     if (!checkApiKey(req)) {
         console.log("API KEY BLOKLANDI");
