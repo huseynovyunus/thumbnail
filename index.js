@@ -11,54 +11,53 @@ const app = express();
 app.use(express.json());
 
 function checkApiKey(req) {
-    // 1) Read common header names
+
+    // RapidAPI özü request-i yoxlayır
+    if (req.headers['x-rapidapi-user']) {
+        console.log("✅ RapidAPI istifadəçisi:", req.headers['x-rapidapi-user']);
+
+        return {
+            key: "rapidapi",
+            user: req.headers['x-rapidapi-user']
+        };
+    }
+
+
+    // Normal API key yoxlaması
     const rawHeader =
-        req.headers['x-rapidapi-key'] ||
         req.headers['x-api-key'] ||
         req.headers['authorization'] ||
         null;
 
-    // 2) Also allow body/query for testing (opt-in via env)
-    const allowQueryKey = process.env.ALLOW_KEY_IN_QUERY === 'true';
-    const rawQueryKey = allowQueryKey ? (req.body?.api_key || req.body?.key || req.query?.api_key || req.query?.key) : null;
 
-    const raw = rawHeader || rawQueryKey;
-    if (!raw) {
-        console.log("❌ API KEY header/dəyəri tapılmadı");
+    if (!rawHeader) {
+        console.log("❌ API KEY tapılmadı");
         return null;
     }
 
-    // Normalize and remove common prefixes
-    let apiKey = typeof raw === 'string' ? raw.trim() : raw;
-    apiKey = (apiKey || '').replace(/^(bearer|key)\s+/i, '').trim();
 
-    // Build allowed list from env (trim each)
-    const allowedFromList = ((process.env.ALLOWED_API_KEYS || process.env.API_KEYS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean));
+    const apiKey = rawHeader
+        .replace(/^(Bearer|Key)\s+/i, '')
+        .trim();
 
-    if (process.env.RAPIDAPI_KEY) allowedFromList.push(process.env.RAPIDAPI_KEY.trim());
-    if (process.env.X_API_KEY) allowedFromList.push(process.env.X_API_KEY.trim());
 
-    // Dev bypass
-    if (process.env.DISABLE_API_KEY_CHECK === 'true') {
-        console.warn('⚠️ API key check disabled (DISABLE_API_KEY_CHECK=true)');
-        return { key: apiKey, user: 'dev-bypass' };
-    }
+    const allowed = [
+        process.env.API_KEYS,
+        process.env.RAPIDAPI_KEY
+    ].filter(Boolean);
 
-    if (allowedFromList.length === 0) {
-        console.warn('⚠️ Heç bir allowed API key konfiqurasiya edilməyib. Rejecting by default.');
+
+    if (!allowed.includes(apiKey)) {
+        console.log("❌ API KEY səhvdir");
         return null;
     }
 
-    if (!allowedFromList.includes(apiKey)) {
-        console.log("❌ API KEY qəbul olunmadı (masked):", (apiKey || '').slice(0,6)+"...");
-        return null;
-    }
 
-    console.log("✅ API KEY qəbul edildi (masked):", apiKey.slice(0,6)+"...");
-    return { key: apiKey };
+    console.log("✅ API KEY qəbul edildi");
+
+    return {
+        key: apiKey
+    };
 }
 
 // ------------------------------------------------------------------
