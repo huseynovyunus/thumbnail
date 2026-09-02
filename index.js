@@ -668,10 +668,10 @@ if (proxy) {
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
     // ----------------------------------------------------
     app.post('/extract', async (req, res) => {
-    console.log("YENİ KOD İŞLƏYİR");
-    console.log("ALL HEADERS:", req.headers);
-    console.log("YENİ KOD İŞLƏYİR");
-    console.log("ALL HEADERS:", req.headers);
+        console.log("YENİ KOD İŞLƏYİR");
+        console.log("ALL HEADERS:", req.headers);
+        console.log("BODY:", req.body);
+        console.log("QUERY:", req.query);
 
     if (!checkApiKey(req)) {
         console.log("API KEY BLOKLANDI");
