@@ -9,6 +9,7 @@ const chromium = require('@sparticuz/chromium');
 const app = express();
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
 
