@@ -27,7 +27,7 @@ function checkApiKey(req) {
     // Normal API key yoxlaması
     const rawHeader =
         req.headers['x-api-key'] ||
-        req.headers['x-api-key'] ||
+        req.headers['x-rapidapi-key'] ||
         req.headers['authorization'] ||
         null;
 
