@@ -721,10 +721,10 @@ if (proxy) {
     // ----------------------------------------------------
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
     // ----------------------------------------------------
-    const rapidPlanHeader = (
+    const rapidPlanHeader =
         req.headers['x-rapidapi-subscription'] ||
-        'free'
-    ).toLowerCase();
+        req.body?.planType ||
+        'free';
         
     console.log("PLAN HEADER:", rapidPlanHeader);
         
