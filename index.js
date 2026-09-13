@@ -670,15 +670,15 @@ if (proxy) {
         console.log("BODY:", req.body);
         console.log("QUERY:", req.query);
 
-        const apiKeyCheck = checkApiKey(req);  // ✅ SEH 672
-if (!apiKeyCheck) {                     // ✅ SEH 673
-    console.log("API KEY BLOKLANDI");   // ✅ SEH 674
-                                        // ✅ SEH 675 (boş sətir)
-    return res.status(401).json({       // ✅ SEH 676
-        error: "Invalid API key"        // ✅ SEH 677
-    });                                 // ✅ SEH 678
-}                                       // ✅ SEH 679
-console.log("API KEY QƏBUL EDİLDİ");   // ✅ SEH 680
+        const apiKeyCheck = checkApiKey(req); 
+if (!apiKeyCheck) {                    
+    console.log("API KEY BLOKLANDI"); 
+                                    
+    return res.status(401).json({    
+        error: "Invalid API key"     
+    });                             
+}                                     
+console.log("API KEY QƏBUL EDİLDİ");
 
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
