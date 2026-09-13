@@ -886,5 +886,3 @@ app.listen(PORT, () => {
     console.log(`API işləyir: http://localhost:${PORT}`);
     
 });
-
-}
