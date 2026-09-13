@@ -659,6 +659,7 @@ if (proxy) {
             console.log(`[Puppeteer]: Browser bağlandı.`);
         }
     }
+}
 
     // ----------------------------------------------------
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
