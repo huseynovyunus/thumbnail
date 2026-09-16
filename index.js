@@ -876,7 +876,7 @@ console.log("API KEY QƏBUL EDİLDİ");
         });
     }
 
-);
+    } 
 
 console.log("SERVER BAŞLAYIR...");
 
