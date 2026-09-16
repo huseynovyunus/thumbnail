@@ -876,6 +876,8 @@ console.log("API KEY QƏBUL EDİLDİ");
         });
     }
 
+);
+
 console.log("SERVER BAŞLAYIR...");
 
 const PORT = process.env.PORT || 3000;
