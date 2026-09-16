@@ -712,7 +712,6 @@ console.log("API KEY QƏBUL EDİLDİ");
         return res.status(400).json({
             error: `URL-i emal etmək mümkün olmadı: ${e.message}`
         });
-    }
 
     // ----------------------------------------------------
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
