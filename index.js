@@ -646,7 +646,9 @@ if (proxy) {
 
     } catch (error) {
         console.error(`❌ Puppeteer Səhifə Yüklənməsi/Qiymətləndirilməsi Xətası URL ${url}: ${error.message}. Stack: ${error.stack}`);
-        
+
+    } 
+    
         result.thumbnail = 'https://via.placeholder.com/640x360?text=Error+Loading+Page';
         result.title = result.title === 'Başlıq tapılmadı' ? 'Səhifə yüklənmədi (Timeout/Bot Blok)' : result.title;
 
