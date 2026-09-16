@@ -659,7 +659,6 @@ if (proxy) {
             console.log(`[Puppeteer]: Browser bağlandı.`);
         }
     }
-}
 
     // ----------------------------------------------------
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
@@ -876,7 +875,7 @@ console.log("API KEY QƏBUL EDİLDİ");
         });
     }
 
-    } 
+ });
 
 console.log("SERVER BAŞLAYIR...");
 
