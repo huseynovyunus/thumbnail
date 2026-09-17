@@ -872,8 +872,7 @@ console.log("API KEY QƏBUL EDİLDİ");
             message: 'Daxili xəta oldu, amma plan və çıxarılan məlumat göstərilir.'
         });
     }
-
- });
+});
 
 console.log("SERVER BAŞLAYIR...");
 
