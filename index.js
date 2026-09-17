@@ -776,7 +776,6 @@ console.log("API KEY QƏBUL EDİLDİ");
             message: `Bu dərinlikdə məlumat çıxarmaq üçün minimum RapidAPI ${requiredPlanInfo} planına abunə olmalısınız. Hazırkı daxili planınız: ${user.plan.toUpperCase()}.`
         });
     }
-
     
     // ----------------------------------------------------
     // 4. ƏSAS MƏNTİQ
@@ -874,7 +873,7 @@ console.log("API KEY QƏBUL EDİLDİ");
         });
     }
 
- };
+ });
 
 console.log("SERVER BAŞLAYIR...");
 
