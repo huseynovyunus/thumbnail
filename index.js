@@ -646,7 +646,7 @@ if (proxy) {
 
     } catch (error) {
         console.error(`❌ Puppeteer Səhifə Yüklənməsi/Qiymətləndirilməsi Xətası URL ${url}: ${error.message}. Stack: ${error.stack}`);
-
+        
         result.thumbnail = 'https://via.placeholder.com/640x360?text=Error+Loading+Page';
         result.title = result.title === 'Başlıq tapılmadı' ? 'Səhifə yüklənmədi (Timeout/Bot Blok)' : result.title;
 
@@ -659,6 +659,7 @@ if (proxy) {
             console.log(`[Puppeteer]: Browser bağlandı.`);
         }
     }
+}
 
     // ----------------------------------------------------
     // 1. URL DOĞRULAMASI VƏ TƏHLÜKƏSİZLİK (SSRF qarşısının alınması)
@@ -669,15 +670,15 @@ if (proxy) {
         console.log("BODY:", req.body);
         console.log("QUERY:", req.query);
 
-        const apiKeyCheck = checkApiKey(req); 
-if (!apiKeyCheck) {                    
-    console.log("API KEY BLOKLANDI"); 
-                                    
-    return res.status(401).json({    
-        error: "Invalid API key"     
-    });                             
-}                                     
-console.log("API KEY QƏBUL EDİLDİ");
+        const apiKeyCheck = checkApiKey(req);  // ✅ SEH 672
+if (!apiKeyCheck) {                     // ✅ SEH 673
+    console.log("API KEY BLOKLANDI");   // ✅ SEH 674
+                                        // ✅ SEH 675 (boş sətir)
+    return res.status(401).json({       // ✅ SEH 676
+        error: "Invalid API key"        // ✅ SEH 677
+    });                                 // ✅ SEH 678
+}                                       // ✅ SEH 679
+console.log("API KEY QƏBUL EDİLDİ");   // ✅ SEH 680
 
     const url = req.body?.url || req.query.url;
     const planType = req.body?.planType || req.query.planType;
@@ -711,6 +712,7 @@ console.log("API KEY QƏBUL EDİLDİ");
         return res.status(400).json({
             error: `URL-i emal etmək mümkün olmadı: ${e.message}`
         });
+    }
 
     // ----------------------------------------------------
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
@@ -776,6 +778,7 @@ console.log("API KEY QƏBUL EDİLDİ");
             message: `Bu dərinlikdə məlumat çıxarmaq üçün minimum RapidAPI ${requiredPlanInfo} planına abunə olmalısınız. Hazırkı daxili planınız: ${user.plan.toUpperCase()}.`
         });
     }
+
     
     // ----------------------------------------------------
     // 4. ƏSAS MƏNTİQ
@@ -865,6 +868,7 @@ console.log("API KEY QƏBUL EDİLDİ");
         res.status(200).json(responseBody);
     } catch (error) {
         console.error('❌ Ümumi API Xətası:', error.message);
+
         return res.status(200).json({
             status: 'partial_success',
             plan_type: user.plan,
@@ -872,6 +876,7 @@ console.log("API KEY QƏBUL EDİLDİ");
             message: 'Daxili xəta oldu, amma plan və çıxarılan məlumat göstərilir.'
         });
     }
+
 });
 
 console.log("SERVER BAŞLAYIR...");
@@ -880,6 +885,4 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`API işləyir: http://localhost:${PORT}`);
-    
 });
-    
