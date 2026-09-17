@@ -860,6 +860,7 @@ console.log("API KEY QƏBUL EDİLDİ");
             embed_html: data.embedHtml || null,
             is_video: data.is_video,
             deep_data: data.deepData
+        ;
         
         res.status(200).json(responseBody);
     } catch (error) {
