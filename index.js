@@ -865,7 +865,6 @@ console.log("API KEY QƏBUL EDİLDİ");
         res.status(200).json(responseBody);
     } catch (error) {
         console.error('❌ Ümumi API Xətası:', error.message);
-
         return res.status(200).json({
             status: 'partial_success',
             plan_type: user.plan,
@@ -884,3 +883,4 @@ app.listen(PORT, () => {
     console.log(`API işləyir: http://localhost:${PORT}`);
     
 });
+    
