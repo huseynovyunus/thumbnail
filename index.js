@@ -744,9 +744,12 @@ console.log("API KEY QƏBUL EDİLDİ");
       plan: userPlan
     };
 
-async function checkRateLimit(...) { // <-- async olmalıdır ki, içində await işlətsən
-    const rate = await ...;
-}
+    async function checkRateLimit(identifier, planType) { 
+    // Burada verilənlər bazasından və ya yaddaşdan (memory) rate limit-i yoxlayırsan
+    const rate = await ...; // Artıq burada "await" səhv verməyəcək, çünki funksiya "async"-dir
+    return rate;
+    }  
+    
     const rate = await checkRateLimit(
     user.email,
     user.plan
