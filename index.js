@@ -744,6 +744,9 @@ console.log("API KEY QƏBUL EDİLDİ");
       plan: userPlan
     };
 
+async function checkRateLimit(...) { // <-- async olmalıdır ki, içində await işlətsən
+    const rate = await ...;
+}
     const rate = await checkRateLimit(
     user.email,
     user.plan
