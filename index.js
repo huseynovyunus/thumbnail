@@ -739,26 +739,20 @@ console.log("API KEY QƏBUL EDİLDİ");
 
     const requiredInternalPlan = userPlan;    
 
+
     const user = {
-      email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
-      plan: userPlan
+        email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
+        plan: userPlan
     };
 
-    async function checkRateLimit(identifier, planType) { 
-    
-    const rate = await checkRateLimit(
-    user.email,
-    user.plan
-    );
-
+    // Rate Limit Yoxlaması
+    const rate = await checkRateLimit(user.email, user.plan);
     if (!rate.allowed) {
-
-    return res.status(429).json({
-        status:"rate_limit_exceeded",
-        message:"Gündəlik limit bitib.",
-        retryAfter:rate.retryAfter
-    });
-
+        return res.status(429).json({
+            status: "rate_limit_exceeded",
+            message: "Gündəlik limit bitib.",
+            retryAfter: rate.retryAfter
+        });
     }
     
     console.log("PLAN HEADER:", rapidPlanHeader);
