@@ -673,11 +673,10 @@ if (proxy) {
         const apiKeyCheck = checkApiKey(req);  
 if (!apiKeyCheck) {                     
     console.log("API KEY BLOKLANDI");   
-}                        
     return res.status(401).json({      
         error: "Invalid API key"       
-    });                                
-}                                       
+    });                    
+}
 console.log("API KEY QƏBUL EDİLDİ");   
 
     const url = req.body?.url || req.query.url;
@@ -713,6 +712,8 @@ console.log("API KEY QƏBUL EDİLDİ");
             error: `URL-i emal etmək mümkün olmadı: ${e.message}`
         });
     }
+
+    });
 
     // ----------------------------------------------------
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
