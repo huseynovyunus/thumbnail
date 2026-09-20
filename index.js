@@ -717,8 +717,8 @@ console.log("API KEY QƏBUL EDİLDİ");
     // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
     // ----------------------------------------------------
     const rapidPlanHeader =
-        req.headers['x-rapidapi-subscription'] ||
-        req.body?.planType ||
+        req.headers['x-rapidapi-subscription'] ??
+        req.body?.planType ??
         'free';
         
     console.log("PLAN HEADER:", rapidPlanHeader);
