@@ -1,5 +1,5 @@
 {
-  "name": "smart-content-extractor-api",
+  "name": "smart-content-extractor",
   "version": "1.0.0",
   "description": "URL metadata, text, image and video extraction API",
   "main": "index.js",
