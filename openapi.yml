@@ -1,158 +1,267 @@
 openapi: 3.0.0
 
 info:
-  title: Smart Content Extractor
-  description: |
-    Smart Content Extractor is a powerful URL analysis and content extraction service 
-    that retrieves metadata, thumbnails, OpenGraph information, page content, images, 
-    links, and embedded media from websites.
+title: Smart Content Extractor
+description: |
+Smart Content Extractor is a URL analysis and content extraction service
+that retrieves metadata, thumbnails, OpenGraph information, page content,
+images, links, video sources, and embedded media from websites.
 
-    Supports YouTube, TikTok, Vimeo, Instagram, and Dailymotion with automatic 
-    thumbnail extraction and embed generation.
+```
+Supports websites and video platforms including YouTube, TikTok, Vimeo,
+Instagram, and Dailymotion when supported by the target website.
 
-    Features:
-    - Website thumbnail extraction
-    - OpenGraph metadata extraction
-    - Title and description extraction
-    - Page text extraction
-    - Image and link extraction
-    - Video source detection
-    - Embed HTML generation
-    - Deep browser-based extraction
-    - Free, Basic, Pro and Ultra plans
+Features:
+- Website thumbnail extraction
+- OpenGraph metadata extraction
+- Title and description extraction
+- Page text extraction
+- Image extraction
+- Link extraction
+- Video source detection
+- Embed HTML generation
+- Deep browser-based extraction
+- Multiple extraction plan levels
+```
 
-  version: 1.0.0
+version: 1.0.0
 
 servers:
-  - url: https://thumbnail-1l9q.onrender.com
+
+* url: https://thumbnail-1l9q.onrender.com
+  description: Production server
 
 paths:
+/extract:
+post:
+operationId: extractWebsiteContent
+summary: Extract website content
+description: |
+Extract metadata, thumbnail, OpenGraph information, page text,
+images, links, video sources, and embed information from a URL.
 
-  /extract:
-    post:
-      summary: Extract website content
-      description: |
-        Extract metadata, thumbnail, OpenGraph data, text, images,
-        links and media information from a URL.
+```
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ExtractRequest'
 
-      requestBody:
-        required: true
+        example:
+          url: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+          planType: pro
 
-        content:
+  responses:
+    '200':
+      description: Successful extraction
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExtractResponse'
 
-          application/json:
-            schema:
-              type: object
+          example:
+            status: ok
+            plan_type: pro
+            name: Video title
+            description: Video description
+            thumbnail_url: https://example.com/image.jpg
+            embed_html: '<iframe src="https://example.com/embed"></iframe>'
+            is_video: true
+            deep_data:
+              plan: pro
+              pageContent: Example page content
+              images:
+                - https://example.com/image1.jpg
+                - https://example.com/image2.jpg
+              links:
+                - text: Example link
+                  href: https://example.com
+              videoSources:
+                - https://example.com/video.mp4
+              has_video_sources: true
 
-              required:
-                - url
+    '400':
+      description: Invalid URL or invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
-              properties:
+          example:
+            status: error
+            message: Invalid URL
 
-                url:
-                  type: string
-                  example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                  description: Website URL to analyze
+    '403':
+      description: Premium plan required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
-                planType:
-                  type: string
-                  enum:
-                    - free
-                    - basic
-                    - pro
-                    - ultra
-                  example: pro
-                  description: Extraction plan level
+          example:
+            status: error
+            message: Premium plan required
 
+    '500':
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
-      responses:
+          example:
+            status: error
+            message: Internal server error
+```
 
-        "200":
-          description: Successful extraction
+components:
 
-          content:
+schemas:
 
-            application/json:
-              schema:
+```
+ExtractRequest:
+  type: object
+  required:
+    - url
 
-                type: object
+  properties:
 
-                properties:
+    url:
+      type: string
+      format: uri
+      description: Website URL to analyze
+      example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
-                  status:
-                    type: string
-                    example: ok
+    planType:
+      type: string
+      description: Extraction plan level
+      enum:
+        - free
+        - basic
+        - pro
+        - ultra
+      default: free
+      example: pro
 
-                  plan_type:
-                    type: string
-                    example: pro
+ExtractResponse:
+  type: object
 
-                  name:
-                    type: string
-                    example: Video title
+  properties:
 
-                  description:
-                    type: string
-                    example: Video description
+    status:
+      type: string
+      description: Extraction status
+      example: ok
 
-                  thumbnail_url:
-                    type: string
-                    example: https://example.com/image.jpg
+    plan_type:
+      type: string
+      description: Plan used for the extraction
+      example: pro
 
-                  embed_html:
-                    type: string
-                    example: "<iframe></iframe>"
+    name:
+      type: string
+      description: Extracted title
+      example: Video title
 
-                  is_video:
-                    type: boolean
-                    example: true
+    description:
+      type: string
+      description: Extracted description
+      example: Video description
 
-                  deep_data:
-                    type: object
+    thumbnail_url:
+      type: string
+      format: uri
+      nullable: true
+      description: URL of the extracted thumbnail
+      example: https://example.com/image.jpg
 
-                    properties:
+    embed_html:
+      type: string
+      nullable: true
+      description: Generated embed HTML
+      example: '<iframe src="https://example.com/embed"></iframe>'
 
-                      plan:
-                        type: string
-                        example: pro
+    is_video:
+      type: boolean
+      description: Indicates whether the detected content is a video
+      example: true
 
-                      pageContent:
-                        type: string
+    deep_data:
+      $ref: '#/components/schemas/DeepData'
 
-                      images:
-                        type: array
-                        items:
-                          type: string
+DeepData:
+  type: object
 
-                      links:
-                        type: array
-                        items:
-                          type: object
+  properties:
 
-                          properties:
+    plan:
+      type: string
+      description: Deep extraction plan
+      example: pro
 
-                            text:
-                              type: string
+    pageContent:
+      type: string
+      nullable: true
+      description: Extracted page text content
+      example: Example page content
 
-                            href:
-                              type: string
+    images:
+      type: array
+      description: Extracted image URLs
+      items:
+        type: string
+        format: uri
+      example:
+        - https://example.com/image1.jpg
+        - https://example.com/image2.jpg
 
-                      videoSources:
-                        type: array
-                        items:
-                          type: string
+    links:
+      type: array
+      description: Extracted page links
+      items:
+        $ref: '#/components/schemas/ExtractedLink'
 
-                      has_video_sources:
-                        type: boolean
+    videoSources:
+      type: array
+      description: Detected video source URLs
+      items:
+        type: string
+        format: uri
+      example:
+        - https://example.com/video.mp4
 
+    has_video_sources:
+      type: boolean
+      description: Indicates whether video sources were detected
+      example: true
 
-        "400":
-          description: Invalid URL
+ExtractedLink:
+  type: object
 
+  properties:
 
-        "403":
-          description: Premium plan required
+    text:
+      type: string
+      description: Visible link text
+      example: Example link
 
+    href:
+      type: string
+      format: uri
+      description: Link URL
+      example: https://example.com
 
-        "500":
-          description: Server error
+ErrorResponse:
+  type: object
+
+  properties:
+
+    status:
+      type: string
+      example: error
+
+    message:
+      type: string
+      example: Invalid URL
+```
