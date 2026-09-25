@@ -1,33 +1,3 @@
-openapi: 3.0.0
-
-info:
-title: Smart Content Extractor
-description: |
-Smart Content Extractor is a URL analysis and content extraction service
-that retrieves metadata, thumbnails, OpenGraph information, page content,
-images, links, video sources, and embedded media from websites.
-
-```
-Supports websites and video platforms including YouTube, TikTok, Vimeo,
-Instagram, and Dailymotion when supported by the target website.
-
-Features:
-- Website thumbnail extraction
-- OpenGraph metadata extraction
-- Title and description extraction
-- Page text extraction
-- Image extraction
-- Link extraction
-- Video source detection
-- Embed HTML generation
-- Deep browser-based extraction
-- Multiple extraction plan levels
-```
-
-version: 1.0.0
-
-servers:
-
 * url: https://thumbnail-1l9q.onrender.com
   description: Production server
 
