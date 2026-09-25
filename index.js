@@ -678,10 +678,9 @@ if (!apiKeyCheck) {
     });                    
 }
 console.log("API KEY QƏBUL EDİLDİ");   
-
-    const url = req.body?.url || req.query.url;
+    const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link;
     const planType = req.body?.planType || req.query.planType;
-
+        
     if (!url) {
         return res.status(400).json({
             error: 'URL sahəsi tələb olunur.'
