@@ -873,6 +873,12 @@ console.log("API KEY QƏBUL EDİLDİ");
 
 });
 
+// Admin panel marşrutu
+app.get('/admin-panel', (req, res) => {
+    // Burada sadə bir idarəetmə mətni və ya statistika göstərə bilərsiniz
+    res.send("Admin Panelinə Xoş Gəlmisiniz. Bu hissə hələ hazırlanır.");
+});
+
 console.log("SERVER BAŞLAYIR...");
 
 const PORT = process.env.PORT || 3000;
