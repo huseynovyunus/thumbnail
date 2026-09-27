@@ -12,54 +12,35 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
-
-    // RapidAPI özü request-i yoxlayır
-    if (req.headers['x-rapidapi-user']) {
-        console.log("✅ RapidAPI istifadəçisi:", req.headers['x-rapidapi-user']);
-
-        return {
-            key: "rapidapi",
-            user: req.headers['x-rapidapi-user']
-        };
-    }
-
-
-    // Normal API key yoxlaması
     const rawHeader =
         req.headers['x-api-key'] ||
         req.headers['x-rapidapi-key'] ||
         req.headers['authorization'] ||
         null;
 
-
     if (!rawHeader) {
         console.log("❌ API KEY tapılmadı");
         return null;
     }
 
-
     const apiKey = rawHeader
         .replace(/^(Bearer|Key)\s+/i, '')
         .trim();
 
-
     const allowed = [
-        process.env.API_KEYS,
-        process.env.RAPIDAPI_KEY
-    ].filter(Boolean);
-
+        ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
+        ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
+    ]
+        .map(v => v.trim())
+        .filter(Boolean);
 
     if (!allowed.includes(apiKey)) {
         console.log("❌ API KEY səhvdir");
         return null;
     }
 
-
     console.log("✅ API KEY qəbul edildi");
-
-    return {
-        key: apiKey
-    };
+    return { key: apiKey };
 }
 
 // ------------------------------------------------------------------
