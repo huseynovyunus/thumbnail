@@ -34,12 +34,13 @@ function checkApiKey(req) {
         .map(v => v.trim())
         .filter(Boolean);
 
-    if (!allowed.includes(apiKey)) {
-        console.log("❌ API KEY səhvdir");
+    // Əgər icazə verilən açarlar siyahısı boş deyilsə və gələn açar bunların içində yoxdursa:
+    if (allowed.length > 0 && !allowed.includes(apiKey)) {
+        console.log("❌ API KEY səhvdir:", apiKey);
         return null;
     }
 
-    console.log("✅ API KEY qəbul edildi");
+    console.log("✅ API KEY uğurla təsdiqləndi");
     return { key: apiKey };
 }
 
