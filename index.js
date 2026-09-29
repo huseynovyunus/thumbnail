@@ -11,6 +11,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+    console.log("REQUEST:", req.method, req.path);
+    next();
+});
+
 function checkApiKey(req) {
 
     // 1. RapidAPI Proxy Secret
