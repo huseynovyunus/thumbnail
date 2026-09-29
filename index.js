@@ -950,4 +950,8 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`API işləyir: http://localhost:${PORT}`);
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> c709994fb78ae43dc8789ef417d72b17bced61b1
