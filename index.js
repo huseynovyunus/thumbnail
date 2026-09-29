@@ -44,6 +44,35 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
+function verifyApiKey(req, res, next) {
+    const proxySecret = req.headers['x-rapidapi-proxy-secret'] || req.headers['x-mashape-proxy-secret'];
+    const rawHeader = req.headers['x-api-key'] || req.headers['authorization'];
+
+    // 1. Əgər sorğu RapidAPI Gateway vasitəsilə gəlibsə (Proxy Secret mövcuddursa):
+    if (proxySecret) {
+        return next(); // Birbaşa icazə veririk!
+    }
+
+    // 2. Əgər birbaşa (Postman və ya lokal) test edilirsə:
+    if (rawHeader) {
+        const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
+        const allowedKeys = [
+            ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
+            ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
+        ].map(v => v.trim()).filter(Boolean);
+
+        if (allowedKeys.length === 0 || allowedKeys.includes(apiKey)) {
+            return next();
+        }
+    }
+
+    console.log("❌ API KEY tapılmadı. Gələn headers:", req.headers);
+    return res.status(401).json({
+        error: "Unauthorized",
+        message: "Etibarlı açar tapılmadı."
+    });
+}
+
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
 // ------------------------------------------------------------------
