@@ -12,45 +12,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
-    // 1. RapidAPI Proxy Secret yoxlaması
-    // RapidAPI panelində "Proxy Secret"i aktiv etsəniz, bu başlıq avtomatik gələcək.
-    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-    
-    // Əgər RapidAPI-dən gəlirsə, birbaşa icazə ver (ən təhlükəsiz yol budur)
-    if (proxySecret) {
-        console.log("✅ RapidAPI vasitəsilə giriş təsdiqləndi.");
+
+    // 1. RapidAPI Proxy Secret
+    const proxySecret =
+        req.headers['x-rapidapi-proxy-secret'];
+
+    const expectedProxySecret =
+        process.env.RAPIDAPI_PROXY_SECRET;
+
+    if (
+        proxySecret &&
+        expectedProxySecret &&
+        proxySecret === expectedProxySecret
+    ) {
+        console.log("✅ RapidAPI Proxy Secret təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
-
-    // 2. API Key yoxlaması (Postman və ya birbaşa müraciətlər üçün)
-    const providedKey = req.headers['x-rapidapi-key'] || req.headers['x-api-key'];
-
-    // Əgər heç bir açar göndərilməyibsə
-    if (!providedKey) {
-        console.log("❌ API KEY tapılmadı.");
-        return null;
-    }
-
-    // Render-də təyin etdiyiniz API_KEYS dəyişənini yoxlayırıq
-    const allowedKeys = (process.env.API_KEYS || "").split(',').map(k => k.trim());
-
-    if (allowedKeys.includes(providedKey)) {
-        console.log("✅ Xüsusi API KEY təsdiqləndi.");
-        return { key: providedKey };
-    }
-
-    console.log("❌ Yanlış API KEY:", providedKey);
-    return null;
-}
-
-function checkApiKey(req) {
-    // 1. RapidAPI Proxy Secret yoxlaması (Loglarda görünən başlık)
-    const proxySecret = req.headers['x-rapidapi-proxy-secret'] || req.headers['x-mashape-proxy-secret'];
-    if (proxySecret) {
-        console.log("✅ RapidAPI Proxy Secret təsdiqləndi");
-        return { key: 'proxy-secret' };
-    }
-
+    
     // 2. Əgər birbaşa (Postman və ya digər yolla) sorğu atılıbsa:
     const rawHeader =
         req.headers['x-api-key'] ||
