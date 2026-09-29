@@ -11,39 +11,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-function checkApiKey(req) {
-    const rawHeader =
-        req.headers['x-api-key'] ||
-        req.headers['x-rapidapi-key'] ||
-        req.headers['authorization'] ||
-        null;
-
-    if (!rawHeader) {
-        console.log("❌ API KEY tapılmadı");
-        return null;
-    }
-
-    const apiKey = rawHeader
-        .replace(/^(Bearer|Key)\s+/i, '')
-        .trim();
-
-    const allowed = [
-        ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
-        ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
-    ]
-        .map(v => v.trim())
-        .filter(Boolean);
-
-    // Əgər icazə verilən açarlar siyahısı boş deyilsə və gələn açar bunların içində yoxdursa:
-    if (allowed.length > 0 && !allowed.includes(apiKey)) {
-        console.log("❌ API KEY səhvdir:", apiKey);
-        return null;
-    }
-
-    console.log("✅ API KEY uğurla təsdiqləndi");
-    return { key: apiKey };
-}
-
 function verifyApiKey(req, res, next) {
     const proxySecret = req.headers['x-rapidapi-proxy-secret'] || req.headers['x-mashape-proxy-secret'];
     const rawHeader = req.headers['x-api-key'] || req.headers['authorization'];
