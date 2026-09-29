@@ -11,33 +11,44 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-function verifyApiKey(req, res, next) {
+function checkApiKey(req) {
+    // 1. RapidAPI Proxy Secret yoxlaması (Loglarda görünən başlık)
     const proxySecret = req.headers['x-rapidapi-proxy-secret'] || req.headers['x-mashape-proxy-secret'];
-    const rawHeader = req.headers['x-api-key'] || req.headers['authorization'];
-
-    // 1. Əgər sorğu RapidAPI Gateway vasitəsilə gəlibsə (Proxy Secret mövcuddursa):
     if (proxySecret) {
-        return next(); // Birbaşa icazə veririk!
+        console.log("✅ RapidAPI Proxy Secret təsdiqləndi");
+        return { key: 'proxy-secret' };
     }
 
-    // 2. Əgər birbaşa (Postman və ya lokal) test edilirsə:
-    if (rawHeader) {
-        const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
-        const allowedKeys = [
-            ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
-            ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
-        ].map(v => v.trim()).filter(Boolean);
+    // 2. Əgər birbaşa (Postman və ya digər yolla) sorğu atılıbsa:
+    const rawHeader =
+        req.headers['x-api-key'] ||
+        req.headers['x-rapidapi-key'] ||
+        req.headers['authorization'] ||
+        null;
 
-        if (allowedKeys.length === 0 || allowedKeys.includes(apiKey)) {
-            return next();
-        }
+    if (!rawHeader) {
+        console.log("❌ API KEY tapılmadı. Gələn headers:", req.headers);
+        return null;
     }
 
-    console.log("❌ API KEY tapılmadı. Gələn headers:", req.headers);
-    return res.status(401).json({
-        error: "Unauthorized",
-        message: "Etibarlı açar tapılmadı."
-    });
+    const apiKey = rawHeader
+        .replace(/^(Bearer|Key)\s+/i, '')
+        .trim();
+
+    const allowed = [
+        ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
+        ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
+    ]
+        .map(v => v.trim())
+        .filter(Boolean);
+
+    if (allowed.length > 0 && !allowed.includes(apiKey)) {
+        console.log("❌ API KEY səhvdir:", apiKey);
+        return null;
+    }
+
+    console.log("✅ API KEY uğurla təsdiqləndi");
+    return { key: apiKey };
 }
 
 // ------------------------------------------------------------------
