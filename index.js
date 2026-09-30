@@ -18,9 +18,8 @@ app.use((req, res, next) => {
 
 function checkApiKey(req) {
 
-    // 1. RapidAPI Proxy Secret
-    const proxySecret =
-        req.headers['x-rapidapi-proxy-secret'];
+    // RapidAPI-dən gələn sorğunu yoxlayırıq
+    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
 
     const expectedProxySecret =
         process.env.RAPIDAPI_PROXY_SECRET;
@@ -33,16 +32,14 @@ function checkApiKey(req) {
         console.log("✅ RapidAPI Proxy Secret təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
-    
-    // 2. Əgər birbaşa (Postman və ya digər yolla) sorğu atılıbsa:
+
+    // Birbaşa Postman → Render sorğusu üçün
     const rawHeader =
         req.headers['x-api-key'] ||
-        req.headers['x-rapidapi-key'] ||
-        req.headers['authorization'] ||
-        null;
+        req.headers['authorization'];
 
     if (!rawHeader) {
-        console.log("❌ API KEY tapılmadı. Gələn headers:", req.headers);
+        console.log("❌ API KEY tapılmadı");
         return null;
     }
 
@@ -50,19 +47,19 @@ function checkApiKey(req) {
         .replace(/^(Bearer|Key)\s+/i, '')
         .trim();
 
-    const allowed = [
-        ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
-        ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
-    ]
-        .map(v => v.trim())
-        .filter(Boolean);
+    const allowedKeys = process.env.API_KEYS
+        ? process.env.API_KEYS
+            .split(',')
+            .map(key => key.trim())
+            .filter(Boolean)
+        : [];
 
-    if (allowed.length > 0 && !allowed.includes(apiKey)) {
-        console.log("❌ API KEY səhvdir:", apiKey);
+    if (!allowedKeys.includes(apiKey)) {
+        console.log("❌ Birbaşa API açarı səhvdir");
         return null;
     }
 
-    console.log("✅ API KEY uğurla təsdiqləndi");
+    console.log("✅ Birbaşa API açarı qəbul edildi");
     return { key: apiKey };
 }
 
