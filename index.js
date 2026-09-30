@@ -82,9 +82,9 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 // 💵 RAPIDAPI PLANLARI VƏ DƏRİN ÇIXARMA SƏVİYYƏLƏRİ (Dəyişməz)
 const PRICING_PLANS = {
-    FREE: { 
-        name: 'Free',
-        internal: 'free',
+    BASİC: { 
+        name: 'Basic',
+        internal: 'basic',
         accessLevel: 0,
         dailyLimit: 50,
         monthlyLimit: 1500,
@@ -97,30 +97,30 @@ const PRICING_PLANS = {
         ]
     },
 
-    BASIC: { 
-        name: 'Basic',
-        internal: 'basic',
+    PRO: { 
+        name: 'Pro',
+        internal: 'pro',
         accessLevel: 1,
         dailyLimit: 1000,
         monthlyLimit: 30000,
         price: 19.99,
         features: [
-            'Free xüsusiyyətləri',
+            'Basic xüsusiyyətləri',
             'OpenGraph məlumatları',
             'Səhifə təsviri',
             'Əsas mətn çıxarışı'
         ]
     },
 
-    PRO: { 
-        name: 'Pro',
-        internal: 'pro',
+    ULTRA: { 
+        name: 'Ultra',
+        internal: 'ultra',
         accessLevel: 2,
         dailyLimit: 10000,
         monthlyLimit: 300000,
         price: 79.99,
         features: [
-            'Basic xüsusiyyətləri',
+            'Pro xüsusiyyətləri',
             'Tam səhifə məzmunu',
             'Şəkillərin çıxarılması',
             'Linklərin çıxarılması',
@@ -128,9 +128,9 @@ const PRICING_PLANS = {
         ]
     },
 
-    ULTRA: { 
-        name: 'Ultra',
-        internal: 'ultra',
+    MEGA: { 
+        name: 'Mega',
+        internal: 'mega',
         accessLevel: 3,
         dailyLimit: 50000,
         monthlyLimit: 1500000,
@@ -147,10 +147,10 @@ const PRICING_PLANS = {
 // 📌 KONFİGURASİYA: PLANLAR ÜZRƏ MƏLUMAT LİMİTLƏRİ (Dəyişməz)
 const PLAN_CONTENT_LIMITS = {
     contentLimit: {
-        basic: 5000,
-        pro: 10000,
-        ultra: 100000,
-        free: 500 
+        pro: 5000,
+        ultra: 10000,
+        mega: 100000,
+        basic: 500 
     },
     paragraphLimit: {
         basic: 10,
@@ -165,10 +165,10 @@ const PLAN_CONTENT_LIMITS = {
 };
 
 const PLAN_ACCESS = {
-    free: 0,
-    basic: 1,
-    pro: 2,
-    ultra: 3
+    basic: 0,
+    pro: 1,
+    ultra: 2,
+    mega: 3
 };
 
 // ------------------------------------------------------------------
