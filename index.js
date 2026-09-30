@@ -664,8 +664,8 @@ if (proxy) {
             }
 
 
-            // --- YALNIZ PRO VƏ ULTRA PLAN ÜÇÜN ---
-            if (currentPlan === 'pro' || currentPlan === 'ultra') {
+            // --- YALNIZ ULTRA VƏ MEGA PLAN ÜÇÜN ---
+            if (currentPlan === 'ultra' || currentPlan === 'mega') {
                 output.links = Array.from(document.querySelectorAll('a[href]'))
                     .map(a => ({
                         text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
@@ -793,23 +793,24 @@ if (proxy) {
         // ----------------------------------------------------
         // 2. AUTHENTICATION (RapidAPI başlığı əsasında)
         // ----------------------------------------------------
-        const rapidPlanHeader =
+        const rapidPlanHeader = String(
             req.headers['x-rapidapi-subscription'] ??
             req.body?.planType ??
-            'basic'; // default: basic (free əvəzinə)
+            'basic'
+        ).toLowerCase();
         
         console.log("PLAN HEADER:", rapidPlanHeader);
         
-        let userPlan = 'basic'; // default: basic
+        let userPlan = 'pro'; // default: pro
         
-        if (rapidPlanHeader.includes('ultra')) {
+        if (rapidPlanHeader.includes('mega')) {
+            userPlan = 'mega';
+        }
+        else if (rapidPlanHeader.includes('ultra')) {
             userPlan = 'ultra';
         }
-        else if (rapidPlanHeader.includes('pro')) {
-            userPlan = 'pro';
-        }
-        else if (rapidPlanHeader.includes('free')) {
-            userPlan = 'free';
+        else if (rapidPlanHeader.includes('basic')) {
+            userPlan = 'basic';
         }
 
         const requiredInternalPlan = userPlan;
