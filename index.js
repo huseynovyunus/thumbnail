@@ -18,22 +18,16 @@ app.use((req, res, next) => {
 
 function checkApiKey(req) {
 
-    // RapidAPI-dən gələn sorğunu yoxlayırıq
-    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
+    // RapidAPI sorğusu
+    if (req.headers['x-rapidapi-user']) {
+        console.log("✅ RapidAPI sorğusu qəbul edildi");
+        console.log("RapidAPI User:", req.headers['x-rapidapi-user']);
+        console.log("RapidAPI Plan:", req.headers['x-rapidapi-subscription']);
 
-    const expectedProxySecret =
-        process.env.RAPIDAPI_PROXY_SECRET;
-
-    if (
-        proxySecret &&
-        expectedProxySecret &&
-        proxySecret === expectedProxySecret
-    ) {
-        console.log("✅ RapidAPI Proxy Secret təsdiqləndi");
-        return { key: 'rapidapi-proxy' };
+        return { key: 'rapidapi' };
     }
 
-    // Birbaşa Postman → Render sorğusu üçün
+    // Birbaşa Postman → Render
     const rawHeader =
         req.headers['x-api-key'] ||
         req.headers['authorization'];
