@@ -15,6 +15,7 @@ app.use(express.raw({ limit: '50mb' }));
 
 app.use((req, res, next) => {
     console.log("REQUEST:", req.method, req.path);
+    console.log("📦 PARSED BODY:", req.body);
     next();
 });
 
