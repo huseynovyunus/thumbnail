@@ -955,10 +955,15 @@ if (proxy) {
 
     });
 
-// Admin panel marşrutu
-app.get('/admin-panel', (req, res) => {
-    // Burada sadə bir idarəetmə mətni və ya statistika göstərə bilərsiniz
-    res.send("Admin Panelinə Xoş Gəlmisiniz. Bu hissə hələ hazırlanır.");
+// Admin panel POST marşrutu
+app.post('/admin-panel', (req, res) => {
+    // Burada POST ilə gələn məlumatı işləyə bilərsən
+    const body = req.body; // JSON və ya form-data
+    res.json({
+        message: "Admin Panelinə POST sorğusu qəbul edildi.",
+        data: body
+    });
+    
 });
 
 console.log("SERVER BAŞLAYIR...");
