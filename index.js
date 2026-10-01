@@ -32,6 +32,8 @@ function checkApiKey(req) {
         req.headers['x-api-key'] ||
         req.headers['authorization'];
 
+    console.log("Gələn rawHeader:", rawHeader); // <--- Bunu əlavə et
+
     if (!rawHeader) {
         console.log("❌ API KEY tapılmadı");
         return null;
