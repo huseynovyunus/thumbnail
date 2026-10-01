@@ -14,8 +14,13 @@ app.use(express.text({ limit: '50mb' }));
 app.use(express.raw({ limit: '50mb' }));
 
 app.use((req, res, next) => {
-    console.log("REQUEST:", req.method, req.path);
-    console.log("📦 PARSED BODY:", req.body);
+    console.log("\n📊 === REQUEST DETAILS ===");
+    console.log("Content-Type:", req.headers['content-type']);
+    console.log("Content-Length:", req.headers['content-length']);
+    console.log("Raw Body Type:", typeof req.body);
+    console.log("Raw Body:", req.body);
+    console.log("Body String:", JSON.stringify(req.body));
+    console.log("========================\n");
     next();
 });
 
