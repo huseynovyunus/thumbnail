@@ -8,7 +8,8 @@ const chromium = require('@sparticuz/chromium');
 
 const app = express();
 
-app.use(express.json({ limit: '50mb' }));
+// Bütün tipdə body-ni tutan parser
+app.use(express.json({ limit: '50mb', type: () => true }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use((req, res, next) => {
