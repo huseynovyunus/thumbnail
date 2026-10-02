@@ -955,15 +955,46 @@ if (proxy) {
 
     });
 
-// Admin panel POST marşrutu
+// 1. ROOT - bunu bura qoy - health check üçün
+app.get('/', (req, res) => {
+    res.json({ 
+        status: "API is running",
+        time: new Date().toISOString()
+    });
+});
+
+// 2. EXTRACT - sənin əsas API-in (bu səndə var, toxunma)
+app.post('/extract', async (req, res) => {
+    // ... sənin kodun ...
+});
+
+// 3. ADMIN PANEL - köhnə admin-panel-i sil, bunu yapışdır
 app.post('/admin-panel', (req, res) => {
-    // Burada POST ilə gələn məlumatı işləyə bilərsən
-    const body = req.body; // JSON və ya form-data
+    const apiKeyCheck = checkApiKey(req);
+    if (!apiKeyCheck) {
+        console.log("❌ Admin panelə icazəsiz giriş");
+        return res.status(401).json({ 
+            error: "Unauthorized - Admin panel üçün API KEY lazımdır" 
+        });
+    }
+
+    console.log("✅ Admin panelə giriş:", apiKeyCheck.key);
+    
     res.json({
         message: "Admin Panelinə POST sorğusu qəbul edildi.",
-        data: body
+        user: apiKeyCheck.key,
+        data: req.body,
+        query: req.query
     });
-    
+});
+
+// ----------------------------------------------------
+// SERVER BAŞLADILMASI - ən axırda qalmalıdır
+// ----------------------------------------------------
+console.log("SERVER BAŞLAYIR...");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`API işləyir: http://localhost:${PORT}`);
 });
 
 console.log("SERVER BAŞLAYIR...");
