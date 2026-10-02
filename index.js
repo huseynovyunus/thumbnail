@@ -956,7 +956,7 @@ if (proxy) {
     });
 
 // 1. ROOT - bunu bura qoy - health check üçün
-app.get('/', (req, res) => {
+app.get('/extract', (req, res) => {
     res.json({ 
         status: "API is running",
         time: new Date().toISOString()
@@ -997,11 +997,3 @@ app.listen(PORT, () => {
     console.log(`API işləyir: http://localhost:${PORT}`);
 });
 
-console.log("SERVER BAŞLAYIR...");
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-    console.log(`API işləyir: http://localhost:${PORT}`);
-    
-});
