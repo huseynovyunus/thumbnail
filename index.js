@@ -963,11 +963,6 @@ app.get('/extract', (req, res) => {
     });
 });
 
-// 2. EXTRACT - sənin əsas API-in (bu səndə var, toxunma)
-app.post('/extract', async (req, res) => {
-    // ... sənin kodun ...
-});
-
 // 3. ADMIN PANEL - köhnə admin-panel-i sil, bunu yapışdır
 app.post('/admin-panel', (req, res) => {
     const apiKeyCheck = checkApiKey(req);
