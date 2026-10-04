@@ -706,10 +706,7 @@ app.post('/extract', async (req, res) => {
         });
     }
 
-    const rapidPlanHeader =
-        req.headers['x-rapidapi-subscription'] ??
-        req.body?.planType ??
-        'basic';
+    const rapidPlanHeader = req.body?.planType || 'basic';
     
     let userPlan = 'basic';
     if (rapidPlanHeader.includes('ultra')) {
