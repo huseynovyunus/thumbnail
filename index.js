@@ -161,7 +161,7 @@ async function checkRateLimit(userId, plan) {
     }
 
     const key = userId || "guest";
-    const limit = plan === "pro" ? 10000 : 50;
+    const limit = { basic: 50, pro: 1000, ultra: 10000, mega: 50000 }[plan] || 50;
 
     if (!global.rateLimits[key]) {
         global.rateLimits[key] = {
