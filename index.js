@@ -161,7 +161,16 @@ async function checkRateLimit(userId, plan) {
     }
 
     const key = userId || "guest";
-    const limit = { basic: 50, pro: 1000, ultra: 10000, mega: 50000 }[plan] || 50;
+
+    const limits = {
+        basic: 50,
+        pro: 1000,
+        ultra: 10000,
+        mega: 50000
+    };
+
+    const normalizedPlan = String(plan || "basic").toLowerCase();
+    const limit = limits[normalizedPlan] || limits.basic;
 
     if (!global.rateLimits[key]) {
         global.rateLimits[key] = {
@@ -172,6 +181,7 @@ async function checkRateLimit(userId, plan) {
 
     const data = global.rateLimits[key];
 
+    // 24 saat keçibsə limiti sıfırla
     if (Date.now() - data.createdAt > 86400000) {
         data.count = 0;
         data.createdAt = Date.now();
@@ -194,8 +204,13 @@ async function checkRateLimit(userId, plan) {
 
 function ipToLong(ip) {
     const parts = ip.split('.');
+
     if (parts.length !== 4) return 0;
-    return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
+
+    return parts.reduce(
+        (acc, part) => (acc * 256) + parseInt(part, 10),
+        0
+    );
 }
 
 // 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
