@@ -18,15 +18,6 @@ function checkApiKey(req) {
         return { key: 'rapidapi-proxy' };
     }
 
-    // Əgər sorğu RapidAPI üzərindən gəlibsə, RapidAPI özü bu başlıqları əlavə edir:
-    const rapidApiUser = req.headers['x-rapidapi-user'];
-    const rapidApiSub = req.headers['x-rapidapi-subscription'];
-
-    if (rapidApiUser || rapidApiSub) {
-        console.log("✅ RapidAPI Qapısından keçdi, İstifadəçi:", rapidApiUser);
-        return { key: rapidApiUser || 'rapidapi-user' };
-    }
-
     // Əgər kənardan birbaşa (Postman ilə birbaşa Render-ə) sorğu gələrsə:
     const rawHeader =
         req.headers['x-api-key'] ||
