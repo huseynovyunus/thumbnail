@@ -11,10 +11,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-console.log("PROXY SECRET GƏLDİ:", req.headers['x-rapidapi-proxy-secret']);
-console.log("ENV SECRET VAR:", !!process.env.RAPIDAPI_PROXY_SECRET);
-
 function checkApiKey(req) {
+    console.log("PROXY SECRET GƏLDİ:", req.headers['x-rapidapi-proxy-secret']);
+    console.log("ENV SECRET VAR:", !!process.env.RAPIDAPI_PROXY_SECRET);
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
     if (proxySecret && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
         console.log("✅ RapidAPI Proxy təsdiqləndi");
