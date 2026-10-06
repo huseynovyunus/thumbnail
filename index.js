@@ -12,6 +12,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
+    console.log("PROXY HEADER VAR:", !!req.headers['x-rapidapi-proxy-secret']);
+    console.log("PROXY ENV VAR:", !!process.env.RAPIDAPI_PROXY_SECRET);
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
 
     if (
