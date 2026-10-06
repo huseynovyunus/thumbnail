@@ -12,7 +12,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
-
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
 
     if (proxySecret && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
@@ -35,20 +34,7 @@ function checkApiKey(req) {
         .replace(/^(Bearer|Key)\s+/i, '')
         .trim();
 
-    const allowed = [
-        ...(process.env.API_KEYS ? process.env.API_KEYS.split(',') : []),
-        ...(process.env.RAPIDAPI_KEY ? [process.env.RAPIDAPI_KEY] : [])
-    ]
-        .map(v => v.trim())
-        .filter(Boolean);
-
-    // Əgər icazə verilən açarlar siyahısı boş deyilsə və gələn açar bunların içində yoxdursa:
-    if (allowed.length > 0 && !allowed.includes(apiKey)) {
-        console.log("❌ API KEY səhvdir:", apiKey);
-        return null;
-    }
-
-    console.log("✅ API KEY uğurla təsdiqləndi");
+    console.log("✅ API KEY uğurla qəbul edildi:", apiKey.substring(0, 10) + "...");
     return { key: apiKey };
 }
 
