@@ -12,16 +12,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
-    console.log("ENV KEYS:", Object.keys(process.env).filter(k => k.includes("RAPID")));
-    console.log("PROXY:", req.headers['x-rapidapi-proxy-secret']);
-    console.log("ENV:", process.env.RAPIDAPI_PROXY_SECRET);
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-    if (proxySecret && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
+
+    if (proxySecret && proxySecret === process.env.RAPIDAPI_KEY) {
         console.log("✅ RapidAPI Proxy təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
 
-    // Əgər kənardan birbaşa (Postman ilə birbaşa Render-ə) sorğu gələrsə:
     const rawHeader =
         req.headers['x-api-key'] ||
         req.headers['x-rapidapi-key'] ||
@@ -36,6 +33,11 @@ function checkApiKey(req) {
     const apiKey = rawHeader
         .replace(/^(Bearer|Key)\s+/i, '')
         .trim();
+
+    if (apiKey !== process.env.RAPIDAPI_KEY) {
+        console.log("❌ API KEY düzgün deyil");
+        return null;
+    }
 
     console.log("✅ API KEY uğurla qəbul edildi");
     return { key: apiKey };
