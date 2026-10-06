@@ -12,19 +12,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
-    console.log("PROXY HEADER VAR:", !!req.headers['x-rapidapi-proxy-secret']);
-    console.log("PROXY ENV VAR:", !!process.env.RAPIDAPI_PROXY_SECRET);
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-
-    if (
-        proxySecret &&
-        process.env.RAPIDAPI_PROXY_SECRET &&
-        proxySecret === process.env.RAPIDAPI_PROXY_SECRET
-    ) {
+    if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
         console.log("✅ RapidAPI Proxy təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
 
+    // Əgər RapidAPI istifadəçisi kimi gəlibsə
+    const rapidApiUser = req.headers['x-rapidapi-user'];
+    if (rapidApiUser) {
+        console.log("✅ RapidAPI İstifadəçisi təsdiqləndi:", rapidApiUser);
+        return { key: rapidApiUser };
+    }
+
+    // Kənar sorğular üçün birbaşa Açar yoxlanılması
     const rawHeader =
         req.headers['x-api-key'] ||
         req.headers['x-rapidapi-key'] ||
@@ -36,11 +37,9 @@ function checkApiKey(req) {
         return null;
     }
 
-    const apiKey = rawHeader
-        .replace(/^(Bearer|Key)\s+/i, '')
-        .trim();
+    const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
 
-    if (apiKey !== process.env.RAPIDAPI_KEY) {
+    if (process.env.RAPIDAPI_KEY && apiKey !== process.env.RAPIDAPI_KEY) {
         console.log("❌ API KEY düzgün deyil");
         return null;
     }
