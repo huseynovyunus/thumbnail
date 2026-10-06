@@ -14,7 +14,11 @@ app.use(express.urlencoded({ extended: true }));
 function checkApiKey(req) {
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
 
-    if (proxySecret && proxySecret === process.env.RAPIDAPI_KEY) {
+    if (
+        proxySecret &&
+        process.env.RAPIDAPI_PROXY_SECRET &&
+        proxySecret === process.env.RAPIDAPI_PROXY_SECRET
+    ) {
         console.log("✅ RapidAPI Proxy təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
