@@ -675,7 +675,7 @@ app.post('/extract', async (req, res) => {
     }
     console.log("API KEY QƏBUL EDİLDİ");   
 
-    const url = req.body?.url;
+    const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link;
     
     if (!url) {
         return res.status(400).json({
