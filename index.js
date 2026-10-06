@@ -13,12 +13,21 @@ app.use(express.urlencoded({ extended: true }));
 
 function checkApiKey(req) {
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-
     if (proxySecret && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
         console.log("✅ RapidAPI Proxy təsdiqləndi");
         return { key: 'rapidapi-proxy' };
     }
 
+    // Əgər sorğu RapidAPI üzərindən gəlibsə, RapidAPI özü bu başlıqları əlavə edir:
+    const rapidApiUser = req.headers['x-rapidapi-user'];
+    const rapidApiSub = req.headers['x-rapidapi-subscription'];
+
+    if (rapidApiUser || rapidApiSub) {
+        console.log("✅ RapidAPI Qapısından keçdi, İstifadəçi:", rapidApiUser);
+        return { key: rapidApiUser || 'rapidapi-user' };
+    }
+
+    // Əgər kənardan birbaşa (Postman ilə birbaşa Render-ə) sorğu gələrsə:
     const rawHeader =
         req.headers['x-api-key'] ||
         req.headers['x-rapidapi-key'] ||
@@ -34,7 +43,7 @@ function checkApiKey(req) {
         .replace(/^(Bearer|Key)\s+/i, '')
         .trim();
 
-    console.log("✅ API KEY uğurla qəbul edildi:", apiKey.substring(0, 10) + "...");
+    console.log("✅ API KEY uğurla qəbul edildi");
     return { key: apiKey };
 }
 
