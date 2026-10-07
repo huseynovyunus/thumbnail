@@ -661,16 +661,14 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {
 // ----------------------------------------------------
 // 📌 API ENDPOINT: /extract
 // ----------------------------------------------------
-app.post('/extract', async (req, res) => {
 
+// 📌 API ENDPOINT: /extract
+app.post('/extract', async (req, res) => {
+    // Təmizlənmiş tək loglar
+    console.log("--- YENİ SORĞU GƏLDİ ---");
     console.log("METHOD:", req.method);
     console.log("CONTENT-TYPE:", req.headers['content-type']);
     console.log("BODY:", req.body);
-    
-    console.log("YENİ KOD İŞLƏYİR");
-    console.log("ALL HEADERS:", req.headers);
-    console.log("BODY:", req.body);
-    console.log("QUERY:", req.query);
 
     const apiKeyCheck = checkApiKey(req);  
     if (!apiKeyCheck) {                     
