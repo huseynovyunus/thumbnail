@@ -11,19 +11,27 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(express.text({ type: '*/*' }));
-
+// 2. SIGORTA MIDDLEWARE: Əgər Content-Type undefined gələrsə, xam gövdəni özümüz oxuyub JSON-a çeviririk
 app.use((req, res, next) => {
-    if (req.method === 'POST' && req.body) {
-        if (typeof req.body === 'string') {
-            try {
-                req.body = JSON.parse(req.body);
-            } catch (e) {
-                // Əgər göndərilən məlumat JSON deyilsə, sadə mətn olaraq qalır
+    if (!req.body || Object.keys(req.body).length === 0) {
+        let data = '';
+        req.on('data', chunk => {
+            data += chunk;
+        });
+        req.on('end', () => {
+            if (data) {
+                try {
+                    req.body = JSON.parse(data);
+                    console.log("🛠️ [XAM BODY MANUAL OXUNDU]:", req.body);
+                } catch (e) {
+                    req.body = { url: data }; // Əgər sadə sətir kimi gəlibsə
+                }
             }
-        }
+            next();
+        });
+    } else {
+        next();
     }
-    next();
 });
 
 function checkApiKey(req) {
