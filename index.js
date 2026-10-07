@@ -11,6 +11,21 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use(express.text({ type: '*/*' }));
+
+app.use((req, res, next) => {
+    if (req.method === 'POST' && req.body) {
+        if (typeof req.body === 'string') {
+            try {
+                req.body = JSON.parse(req.body);
+            } catch (e) {
+                // Əgər göndərilən məlumat JSON deyilsə, sadə mətn olaraq qalır
+            }
+        }
+    }
+    next();
+});
+
 function checkApiKey(req) {
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
     if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
