@@ -504,7 +504,7 @@ async function launchBrowserWithRetry(launchConfig) {
     }
 }
 
-async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {
+async function extractDeepData(url, plan = 'basic') {
     const limits = PLAN_CONTENT_LIMITS;
     let browser = null;
     
@@ -700,7 +700,7 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
         result.description = data.ogDesc || 'Təsvir tapılmadı';
 
-        if (plan !== PRICING_PLANS.FREE.internal) {
+        if (plan !== 'basic') {
             result.deepData.pageContent = data.pageContent;
             result.deepData.images = data.images;
             
@@ -804,18 +804,18 @@ app.post('/extract', async (req, res) => {
     const rawPlanInput = req.body?.planType || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
     const rapidPlanHeader = String(rawPlanInput).toLowerCase();
     
-    let userPlan = 'free'; // Default olaraq free
+    let userPlan = 'basic'; // Default olaraq basic plan
     
-    if (rapidPlanHeader.includes('mega') || rapidPlanHeader.includes('ultra')) {
-        userPlan = 'ultra'; // 4-cü plan (Ən yüksək limitlər)
+    if (rapidPlanHeader.includes('mega')) {
+        userPlan = 'mega';    // Ən yüksək plan (Limitsiz)
+    } else if (rapidPlanHeader.includes('ultra')) {
+        userPlan = 'ultra';   // 3-cü plan
     } else if (rapidPlanHeader.includes('pro')) {
-        userPlan = 'pro';   // 3-cü plan
+        userPlan = 'pro';     // 2-ci plan
     } else if (rapidPlanHeader.includes('basic')) {
-        userPlan = 'basic'; // 2-ci plan
-    } else if (rapidPlanHeader.includes('free')) {
-        userPlan = 'free';  // 1-ci plan
+        userPlan = 'basic';   // 1-ci plan
     } else {
-        userPlan = 'free';  // Tanınmayan gələrsə free kimi qəbul edirik
+        userPlan = 'basic';   // Tanınmayan gələrsə default olaraq basic qəbul edirik
     }
     
     const requiredInternalPlan = userPlan;
