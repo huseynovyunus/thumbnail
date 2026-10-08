@@ -704,9 +704,11 @@ app.post('/extract', async (req, res) => {
 
     const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link || req.body?.input?.url || req.body?.data?.url;
     
-    if (!url) {
+    // 4. ƏN VACİB MƏQAM: URL boşdursa VƏ YA mövcud deyilsə, DƏRHAL 400 qaytarırıq (Puppeteer-ə BELƏ ÇATMIR)
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+        console.log("XƏTA: URL boşdur və ya təqdim olunmayıb.");
         return res.status(400).json({
-            error: 'URL sahəsi tələb olunur.'
+            error: 'URL sahəsi boş ola bilməz və ya tələb olunur.'
         });
     }
 
