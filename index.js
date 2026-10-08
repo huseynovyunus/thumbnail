@@ -84,11 +84,37 @@ function isPrivateOrBlockedIP(input) {
 
         if (!hostname) return true;
 
-        // Əvvəl yazdığımız isBlockedHostname funksiyasına ötürürük
-        return isBlockedHostname(hostname);
+        const lowerHostname = hostname.toLowerCase();
+
+        // 1. Dəqiq bloklanmış hostlar (localhost, 0.0.0.0 və s.)
+        if (BLOCKED_HOSTS_EXACT.includes(lowerHostname)) {
+            return true;
+        }
+
+        // 2. IP formatındadırsa, private diapazonları yoxlayırıq
+        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+        if (isIp) {
+            const ipLong = ipToLong(hostname);
+            for (const range of PRIVATE_IP_RANGES) {
+                const startLong = ipToLong(range.start);
+                const endLong = ipToLong(range.end);
+                if (ipLong >= startLong && ipLong <= endLong) {
+                    return true; // Private IP-dir, blokla
+                }
+            }
+            return false; // Public IP-dir, icazə ver
+        }
+        
+        // 3. IPv6 localhost yoxlanışı
+        if (lowerHostname === '[::1]' || lowerHostname === '::1') {
+            return true;
+        }
+
+        // Public domenlər (youtube.com, github.com və s.) buradan false qayıdacaq və sorğu keçəcək
+        return false;
     } catch (error) {
-        // Əgər URL səhvdirsə və ya parse oluna bilmirsə, təhlükəsizlik üçün bloklayırıq
-        return true;
+        console.error("SSRF Check Error:", error.message);
+        return true; // Xəta baş verərsə təhlükəsizlik üçün blokla
     }
 }
 
