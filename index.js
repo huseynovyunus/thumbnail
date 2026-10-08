@@ -758,16 +758,14 @@ app.post('/extract', async (req, res) => {
     
     let userPlan = 'basic';
     
-    if (rapidPlanHeader.includes('mega')) {
-        userPlan = 'mega'; // Birbaşa 'mega' olaraq saxlayırıq
-    } else if (rapidPlanHeader.includes('ultra')) {
-        userPlan = 'ultra';
+    if (rapidPlanHeader.includes('mega') || rapidPlanHeader.includes('ultra')) {
+        userPlan = 'ultra'; // 4-cü və ən yüksək plan
     } else if (rapidPlanHeader.includes('pro')) {
-        userPlan = 'pro';
+        userPlan = 'pro';   // 3-cü plan
     } else if (rapidPlanHeader.includes('free')) {
-        userPlan = 'free';
+        userPlan = 'free';  // 1-ci plan
     } else {
-        userPlan = 'basic';
+        userPlan = 'basic'; // 2-ci plan
     }
     
     const requiredInternalPlan = userPlan;
