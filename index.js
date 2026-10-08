@@ -200,47 +200,47 @@ async function checkRateLimit(userId, plan) {
     };
 
     const normalizedPlan = String(plan || "basic").toLowerCase();
-    const limit = limits[normalizedPlan] || limits.basic;
+    const limit = limits[normalizedPlan] || limits.basic;
 
-    if (!global.rateLimits[key]) {
-        global.rateLimits[key] = {
-            count: 0,
-            createdAt: Date.now()
-        };
-    }
+    if (!global.rateLimits[key]) {
+        global.rateLimits[key] = {
+            count: 0,
+            createdAt: Date.now()
+        };
+    }
 
-    const data = global.rateLimits[key];
+    const data = global.rateLimits[key];
 
-    // 24 saat keçibsə limiti sıfırla
-    if (Date.now() - data.createdAt > 86400000) {
-        data.count = 0;
-        data.createdAt = Date.now();
-    }
+    // 24 saat keçibsə limiti sıfırla
+    if (Date.now() - data.createdAt > 86400000) {
+        data.count = 0;
+        data.createdAt = Date.now();
+    }
 
-    data.count++;
+    data.count++;
 
-    if (data.count > limit) {
-        return {
-            allowed: false,
-            retryAfter: 86400
-        };
-    }
+    if (data.count > limit) {
+        return {
+            allowed: false,
+            retryAfter: 86400
+        };
+    }
 
-    return {
-        allowed: true,
-        remaining: limit - data.count
-    };
+    return {
+        allowed: true,
+        remaining: limit - data.count
+    };
 }
 
 function ipToLong(ip) {
-    const parts = ip.split('.');
+    const parts = ip.split('.');
 
-    if (parts.length !== 4) return 0;
+    if (parts.length !== 4) return 0;
 
-    return parts.reduce(
-        (acc, part) => (acc * 256) + parseInt(part, 10),
-        0
-    );
+    return parts.reduce(
+        (acc, part) => (acc * 256) + parseInt(part, 10),
+        0
+    );
 }
 
 // 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
