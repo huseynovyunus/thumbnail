@@ -703,8 +703,8 @@ async function extractDeepData(url, plan = 'basic') {
         if (plan !== 'basic') {
             result.deepData.pageContent = data.pageContent;
             result.deepData.images = data.images;
-            
-            if (plan === PRICING_PLANS.PRO.internal || plan === PRICING_PLANS.ULTRA.internal) {
+
+            if (plan === 'pro' || plan === 'ultra' || plan === 'mega')
                 result.deepData.links = data.links || [];
                 result.deepData.videoSources = data.videoSources || [];
                 result.deepData.has_video_sources = data.has_video_sources || false;
