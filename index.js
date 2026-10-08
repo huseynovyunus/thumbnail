@@ -597,9 +597,9 @@ async function extractDeepData(url, plan = PRICING_PLANS.FREE.internal) {
 
             textNodes.forEach(node => {
                 const text = node.innerText.trim();
-                if (text.length > 50 && text.length < 500) {
-                    paragraphs.push(text);
-                }
+                if (text.length >= 15) { // 500 simvol sərhədini qaldırırıq
+                paragraphs.push(text);
+            }
             });
 
             let paragraphsToUse = paragraphs;
