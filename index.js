@@ -758,7 +758,9 @@ app.post('/extract', async (req, res) => {
     
     let userPlan = 'basic';
     
-    if (rapidPlanHeader.includes('mega') || rapidPlanHeader.includes('ultra')) {
+    if (rapidPlanHeader.includes('mega')) {
+        userPlan = 'mega'; // Birbaşa 'mega' olaraq saxlayırıq
+    } else if (rapidPlanHeader.includes('ultra')) {
         userPlan = 'ultra';
     } else if (rapidPlanHeader.includes('pro')) {
         userPlan = 'pro';
@@ -767,7 +769,7 @@ app.post('/extract', async (req, res) => {
     } else {
         userPlan = 'basic';
     }
-
+    
     const requiredInternalPlan = userPlan;
     const user = {
         email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
