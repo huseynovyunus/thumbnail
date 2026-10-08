@@ -71,6 +71,27 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
+// 🛡️ URL-in və ya Hostnamenin təhlükəsiz olub olmadığını yoxlayan funksiya
+function isPrivateOrBlockedIP(input) {
+    try {
+        let hostname = input;
+        
+        // Əgər tam URL daxil edilibsə, hostnameni ayırırıq
+        if (input && input.includes('://')) {
+            const parsedUrl = new URL(input);
+            hostname = parsedUrl.hostname;
+        }
+
+        if (!hostname) return true;
+
+        // Əvvəl yazdığımız isBlockedHostname funksiyasına ötürürük
+        return isBlockedHostname(hostname);
+    } catch (error) {
+        // Əgər URL səhvdirsə və ya parse oluna bilmirsə, təhlükəsizlik üçün bloklayırıq
+        return true;
+    }
+}
+
 // ------------------------------------------------------------------
 // KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
 // ------------------------------------------------------------------
