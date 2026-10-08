@@ -87,35 +87,20 @@ const PRIVATE_IP_RANGES = [
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
-// 💵 RAPIDAPI PLANLARI VƏ DƏRİN ÇIXARMA SƏVİYYƏLƏRİ (Dəyişməz)
+// 💵 RAPIDAPI PLANLARI VƏ LİMİTLƏRİ (Mega: Limitsiz simvol, 10k günlük / 300k aylıq sorğu)
 const PRICING_PLANS = {
-    FREE: { 
-        name: 'Free',
-        internal: 'free',
-        accessLevel: 0,
-        dailyLimit: 50,
-        monthlyLimit: 1500,
-        price: 0,
-        features: [
-            'Thumbnail çıxarışı',
-            'Başlıq',
-            'Müəllif məlumatı',
-            'Əsas metadata'
-        ]
-    },
-
     BASIC: { 
         name: 'Basic',
         internal: 'basic',
         accessLevel: 1,
-        dailyLimit: 1000,
-        monthlyLimit: 30000,
+        dailyLimit: 10,
+        monthlyLimit: 100,
         price: 19.99,
         features: [
-            'Free xüsusiyyətləri',
+            'Qiymət: $19.99 / ay',
             'OpenGraph məlumatları',
             'Səhifə təsviri',
-            'Əsas mətn çıxarışı'
+            'Əsas mətn çıxarışı (1k simvol)'
         ]
     },
 
@@ -123,12 +108,13 @@ const PRICING_PLANS = {
         name: 'Pro',
         internal: 'pro',
         accessLevel: 2,
-        dailyLimit: 10000,
-        monthlyLimit: 300000,
+        dailyLimit: 350,
+        monthlyLimit: 10000,
         price: 79.99,
         features: [
+            'Qiymət: $79.99 / ay',
             'Basic xüsusiyyətləri',
-            'Tam səhifə məzmunu',
+            'Tam səhifə məzmunu (10k simvol)',
             'Şəkillərin çıxarılması',
             'Linklərin çıxarılması',
             'Video mənbələri'
@@ -139,43 +125,60 @@ const PRICING_PLANS = {
         name: 'Ultra',
         internal: 'ultra',
         accessLevel: 3,
-        dailyLimit: 50000,
-        monthlyLimit: 1500000,
+        dailyLimit: 1000,
+        monthlyLimit: 30000,
+        price: 149.99,
+        features: [
+            'Qiymət: $149.99 / ay',
+            'Pro xüsusiyyətləri',
+            'Genişləndirilmiş məzmun (50k simvol)',
+            'Prioritet emal'
+        ]
+    },
+
+    MEGA: { 
+        name: 'Mega',
+        internal: 'mega',
+        accessLevel: 4,
+        dailyLimit: 10000,   // Gündəlik 10,000 sorğu
+        monthlyLimit: 300000, // Aylıq 300,000 sorğu
         price: 249.99,
         features: [
-            'Pro xüsusiyyətləri',
-            'Prioritet emal',
-            'Yüksək sorğu limiti',
-            'Böyük layihələr üçün istifadə'
+            'Qiymət: $249.99 / ay',
+            'Ultra xüsusiyyətləri',
+            'Limitsiz simvol, paraqraf və şəkil çıxarışı',
+            'Maksimum imkanlar və prioritet dəstək'
         ]
     }
 };
 
-// 📌 KONFİGURASİYA: PLANLAR ÜZRƏ MƏLUMAT LİMİTLƏRİ (Dəyişməz)
+// 📌 MƏLUMAT VƏ SİMVOL LİMİTLƏRİ
 const PLAN_CONTENT_LIMITS = {
     contentLimit: {
-        basic: 5000,
+        basic: 1000,
         pro: 10000,
-        ultra: 100000,
-        free: 500 
+        ultra: 50000,
+        mega: null // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
     },
     paragraphLimit: {
         basic: 10,
         pro: 50,
-        ultra: 200
+        ultra: 200,
+        mega: null // Limitsiz paraqraf
     },
     imageLimit: {
         basic: 10,
         pro: 50,
-        ultra: 200
+        ultra: 200,
+        mega: null // Limitsiz şəkil
     }
 };
 
 const PLAN_ACCESS = {
-    free: 0,
     basic: 1,
     pro: 2,
-    ultra: 3
+    ultra: 3,
+    mega: 4
 };
 
 // ------------------------------------------------------------------
