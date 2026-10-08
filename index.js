@@ -184,7 +184,6 @@ const PLAN_ACCESS = {
 // ------------------------------------------------------------------
 // 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
 // ------------------------------------------------------------------
-
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) {
         global.rateLimits = {};
@@ -192,11 +191,12 @@ async function checkRateLimit(userId, plan) {
 
     const key = userId || "guest";
 
+    // Son təyin olunan gündəlik limitlər
     const limits = {
-        basic: 50,
-        pro: 1000,
-        ultra: 10000,
-        mega: 50000
+        basic: 10,
+        pro: 350,
+        ultra: 1000,
+        mega: 10000
     };
 
     const normalizedPlan = String(plan || "basic").toLowerCase();
@@ -244,39 +244,37 @@ function ipToLong(ip) {
 }
 
 // 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
-function isPrivateOrBlockedIP(hostname) {
-    const lowerHostname = hostname.toLowerCase();
-
-    if (BLOCKED_HOSTS_EXACT.includes(lowerHostname)) {
-        return true;
-    }
-
-    const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+function isPrivateIP(ip) {
+    const long = ipToLong(ip);
     
-    if (isIp) {
-        const ipLong = ipToLong(hostname);
-        for (const range of PRIVATE_IP_RANGES) {
-            const startLong = ipToLong(range.start);
-            const endLong = ipToLong(range.end);
-            if (ipLong >= startLong && ipLong <= endLong) {
-                return true; 
-            }
-        }
-        return false; 
-    }
+    // Loopback (127.0.0.1 / 8)
+    const loopbackStart = ipToLong('127.0.0.0');
+    const loopbackEnd = ipToLong('127.255.255.255');
     
-    if (lowerHostname === '[::1]' || lowerHostname === '::1') {
-        return true;
-    }
+    // Private Class A (10.0.0.0 / 8)
+    const classAStart = ipToLong('10.0.0.0');
+    const classAEnd = ipToLong('10.255.255.255');
+    
+    // Private Class B (172.16.0.0 / 12)
+    const classBStart = ipToLong('172.16.0.0');
+    const classBEnd = ipToLong('172.31.255.255');
+    
+    // Private Class C (192.168.0.0 / 16)
+    const classCStart = ipToLong('192.168.0.0');
+    const classCEnd = ipToLong('192.168.255.255');
+    
+    // Link-local / AWS Metadata (169.254.0.0 / 16)
+    const linkLocalStart = ipToLong('169.254.0.0');
+    const linkLocalEnd = ipToLong('169.254.255.255');
 
-    return false;
-}
-
-const PROXY_LIST = (process.env.PROXY_LIST || '').split(',').filter(Boolean);
-
-function getRandomProxy() {
-    if (PROXY_LIST.length === 0) return null;
-    return PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)];
+    return (
+        (long >= loopbackStart && long <= loopbackEnd) ||
+        (long >= classAStart && long <= classAEnd) ||
+        (long >= classBStart && long <= classBEnd) ||
+        (long >= classCStart && long <= classCEnd) ||
+        (long >= linkLocalStart && long <= linkLocalEnd) ||
+        ip === '0.0.0.0'
+    );
 }
 
 // 🔧 GitHub File Data Extraction
