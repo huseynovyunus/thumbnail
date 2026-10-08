@@ -760,7 +760,7 @@ app.post('/extract', async (req, res) => {
         });
     }
 
-    let urlObj;
+     let urlObj;
     try {
         urlObj = new URL(url);
 
@@ -781,7 +781,7 @@ app.post('/extract', async (req, res) => {
             error: `URL-i emal etmək mümkün olmadı: ${e.message}`
         });
     }
-
+    
     // GitHub Xüsusi Handling
     const githubData = await extractGitHubFileData(url);
     if (githubData) {
