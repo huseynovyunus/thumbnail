@@ -136,7 +136,7 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 // 💵 RAPIDAPI PLANLARI VƏ LİMİTLƏRİ (Mega: Limitsiz simvol, 10k günlük / 300k aylıq sorğu)
 const PRICING_PLANS = {
-    BASIC: { 
+    basic: { 
         name: 'Basic',
         internal: 'basic',
         accessLevel: 1,
@@ -151,7 +151,7 @@ const PRICING_PLANS = {
         ]
     },
 
-    PRO: { 
+    pro: { 
         name: 'Pro',
         internal: 'pro',
         accessLevel: 2,
@@ -168,7 +168,7 @@ const PRICING_PLANS = {
         ]
     },
 
-    ULTRA: { 
+    ultra: { 
         name: 'Ultra',
         internal: 'ultra',
         accessLevel: 3,
@@ -183,7 +183,7 @@ const PRICING_PLANS = {
         ]
     },
 
-    MEGA: { 
+    mega: { 
         name: 'Mega',
         internal: 'mega',
         accessLevel: 4,
