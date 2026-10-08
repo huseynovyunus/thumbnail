@@ -753,15 +753,19 @@ app.post('/extract', async (req, res) => {
         });
     }
 
-    const rapidPlanHeader = req.body?.planType || 'basic';
+    const rawPlanInput = req.body?.planType || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
+    const rapidPlanHeader = String(rawPlanInput).toLowerCase();
     
     let userPlan = 'basic';
-    if (rapidPlanHeader.includes('ultra')) {
+    
+    if (rapidPlanHeader.includes('mega') || rapidPlanHeader.includes('ultra')) {
         userPlan = 'ultra';
     } else if (rapidPlanHeader.includes('pro')) {
         userPlan = 'pro';
     } else if (rapidPlanHeader.includes('free')) {
         userPlan = 'free';
+    } else {
+        userPlan = 'basic';
     }
 
     const requiredInternalPlan = userPlan;
