@@ -756,16 +756,18 @@ app.post('/extract', async (req, res) => {
     const rawPlanInput = req.body?.planType || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
     const rapidPlanHeader = String(rawPlanInput).toLowerCase();
     
-    let userPlan = 'basic';
+    let userPlan = 'free'; // Default olaraq free
     
     if (rapidPlanHeader.includes('mega') || rapidPlanHeader.includes('ultra')) {
-        userPlan = 'ultra'; // 4-cü və ən yüksək plan
+        userPlan = 'ultra'; // 4-cü plan (Ən yüksək limitlər)
     } else if (rapidPlanHeader.includes('pro')) {
         userPlan = 'pro';   // 3-cü plan
+    } else if (rapidPlanHeader.includes('basic')) {
+        userPlan = 'basic'; // 2-ci plan
     } else if (rapidPlanHeader.includes('free')) {
         userPlan = 'free';  // 1-ci plan
     } else {
-        userPlan = 'basic'; // 2-ci plan
+        userPlan = 'free';  // Tanınmayan gələrsə free kimi qəbul edirik
     }
     
     const requiredInternalPlan = userPlan;
