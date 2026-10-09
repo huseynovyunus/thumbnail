@@ -240,6 +240,12 @@ function ipToLong(ip) {
     );
 }
 
+// Proksi əldə etmək üçün çatışmayan köməkçi funksiya
+function getRandomProxy() {
+    // Hələlik proksi siyahısı istifadə olunmadığı üçün sadəcə null qaytarır
+    return null;
+}
+
 // 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
 function isPrivateIP(ip) {
     const long = ipToLong(ip);
