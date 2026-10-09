@@ -824,7 +824,7 @@ app.post('/extract', async (req, res) => {
         data.description = oembedResult.description || null;
 
         let deepResult = {};
-        if (extractionPlan !== PRICING_PLANS.FREE.internal) {
+        if (extractionPlan !== 'basic') {
             console.log(`[API]: ${extractionPlan.toUpperCase()} planı üçün dərin çıxarma işə salınır...`);
             
             deepResult = await extractDeepData(url, extractionPlan);
