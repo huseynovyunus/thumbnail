@@ -658,7 +658,7 @@ async function extractDeepData(url, plan = 'basic') {
                 result.deepData.links = data.links || [];
                 result.deepData.videoSources = data.videoSources || [];
                 result.deepData.has_video_sources = data.has_video_sources || false;
-            }
+            
         }
 
         return result;
