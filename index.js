@@ -348,7 +348,7 @@ async function extractOembedData(url) {
 }
 
 async function extractYouTubeData(url) {
-    const videoIdMatch = url.match(/(?:v=|\/embed\/|youtu\.be\/|\/v\/|\/vi\/)([A-Za-z0-9_-]{11})/);
+    const videoIdMatch = url.match(/(?:v=|\/embed\/|youtu\.be\/|\/v\/|\/vi\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
     const videoId = videoIdMatch?.[1];
     if (!videoId) {
         console.log("[YouTube]: Video ID not found for URL:", url);
