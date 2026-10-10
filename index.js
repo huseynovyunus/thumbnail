@@ -367,7 +367,7 @@ async function extractYouTubeData(url) {
         return {
             thumbnail: data.thumbnail_url,
             title: data.title,
-            description: `${data.author_name ? data.author_name.replace(/[^\x00-\x7F]/g, '') : 'Müəllif'} tərəfindən. Kanal: ${data.provider_name}`,
+            description: `${data.author_name ? data.author_name.trim() : 'Müəllif'} tərəfindən. Kanal: ${data.provider_name}`,
             embedHtml: `<div class="aspect-w-16 aspect-h-9">${data.html}</div>`,
             is_video: true,
         };
