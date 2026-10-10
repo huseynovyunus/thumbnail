@@ -611,28 +611,28 @@ async function extractDeepData(url, plan = 'basic') {
                 paragraphsToUse = paragraphs.slice(0, paragraphLimit);
             }
 
-            const rawContent = paragraphsToUse.join('\n\n');
-            output.pageContent = paragraphsToUse.join('\n\n').substring(0, contentLimit);
+        const rawContent = paragraphsToUse.join('\n\n');
+        output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
-            const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
-                .flatMap(el => {
-                    const sources = [];
-                    if (el.src) sources.push(el.src);
-                    if (el.srcset) {
-                        const firstSrcsetMatch = el.srcset.match(/^\s*([^,\s]+)/); 
-                        if (firstSrcsetMatch) sources.push(firstSrcsetMatch[1]);
-                    }
-                    return sources;
-                })
-                .filter(src => src && !src.includes('data:image'))
-                .map(src => new URL(src, document.location.href).href)
-                .filter((value, index, self) => self.indexOf(value) === index); 
+        const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
+            .flatMap(el => {
+                const sources = [];
+                if (el.src) sources.push(el.src);
+                if (el.srcset) {
+                    const firstSrcsetMatch = el.srcset.match(/^\s*([^,\s]+)/); 
+                    if (firstSrcsetMatch) sources.push(firstSrcsetMatch[1]);
+                }
+                return sources;
+            })
+            .filter(src => src && !src.includes('data:image'))
+            .map(src => new URL(src, document.location.href).href)
+            .filter((value, index, self) => self.indexOf(value) === index); 
 
-            if (imageLimit) {
-                output.images = images.slice(0, imageLimit);
-            } else {
-                output.images = images;
-            }
+        if (imageLimit) {
+            output.images = images.slice(0, imageLimit);
+        } else {
+            output.images = images;
+        }
 
             if (currentPlan === 'pro' || currentPlan === 'ultra') {
                 output.links = Array.from(document.querySelectorAll('a[href]'))
