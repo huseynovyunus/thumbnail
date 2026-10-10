@@ -596,23 +596,22 @@ async function extractDeepData(url, plan = 'basic') {
             const paragraphLimit = limits.paragraphLimit[currentPlan];
             const imageLimit = limits.imageLimit[currentPlan];
 
-            const textNodes = Array.from(document.querySelectorAll('p, li, article p, main p, div[role="main"] p, section > p, [data-testid*="content"]'));
-            let paragraphs = [];
+            // 1. Əsas məzmun konteynerini tapırıq (Vikipediya üçün #mw-content-text, digərləri üçün main və ya body)
+            const contentContainer = document.querySelector('#mw-content-text') || document.querySelector('main') || document.body;
+            
+            // 2. Klonlayıb lazımsız menyuları, skriptləri və düymələri təmizləyirik
+            const clone = contentContainer.cloneNode(true);
+            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
 
-            textNodes.forEach(node => {
-                const text = node.innerText.trim();
-                if (text.length >= 15) { // 500 simvol sərhədini qaldırırıq
-                paragraphs.push(text);
-            }
-            });
+            // 3. Konteynerin içindəki bütün təmiz mətni oxuyuruq
+            const rawContent = clone.innerText
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .join('\n\n');
 
-            let paragraphsToUse = paragraphs;
-            if (paragraphLimit) {
-                paragraphsToUse = paragraphs.slice(0, paragraphLimit);
-            }
-
-        const rawContent = paragraphsToUse.join('\n\n');
-        output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
+            // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
+            output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
         const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
             .flatMap(el => {
