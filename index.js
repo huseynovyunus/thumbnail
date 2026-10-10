@@ -624,8 +624,11 @@ async function extractDeepData(url, plan = 'basic') {
                 return sources;
             })
             .filter(src => src && !src.includes('data:image'))
-            .map(src => new URL(src, document.location.href).href)
-            .filter((value, index, self) => self.indexOf(value) === index); 
+            .map(src => {
+                const parsed = new URL(src, document.location.href);
+                return parsed.origin + parsed.pathname; // UTM parametrlərini avtomatik təmizləyir
+            })
+            .filter((value, index, self) => self.indexOf(value) === index);
 
         if (imageLimit) {
             output.images = images.slice(0, imageLimit);
