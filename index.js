@@ -633,21 +633,27 @@ async function extractDeepData(url, plan = 'basic') {
             output.images = images;
         }
 
-            if (currentPlan === 'pro' || currentPlan === 'ultra') {
-                output.links = Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => ({
-                        text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
-                        href: new URL(a.href, document.location.href).href
-                    }))
-                    .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index);
+           if (currentPlan === 'pro' || currentPlan === 'ultra' || currentPlan === 'mega') {
+                 const allLinks = Array.from(document.querySelectorAll('a[href]'))
+                     .map(a => ({
+                         text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
+                         href: new URL(a.href, document.location.href).href
+                     }))
+                     .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index);
 
-                output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
-                    .map(el => el.src || el.getAttribute('srcdoc')) 
-                    .filter(Boolean)
-                    .filter((value, index, self) => self.indexOf(value) === index);
-                
-                output.has_video_sources = output.videoSources.length > 0;
-            }
+                 if (currentPlan === 'mega') {
+                     output.links = allLinks; // 🚀 Mega planı üçün BÜTÜN linklər
+                 } else {
+                     output.links = allLinks.slice(0, 50); // Pro/Ultra üçün limitli
+                 }
+
+                 output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
+                     .map(el => el.src || el.getAttribute('srcdoc')) 
+                     .filter(Boolean)
+                     .filter((value, index, self) => self.indexOf(value) === index);
+                 
+                 output.has_video_sources = output.videoSources.length > 0;
+             }
 
             return output;
         }, plan, limits); 
