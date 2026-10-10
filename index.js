@@ -576,17 +576,38 @@ async function extractDeepData(url, plan = 'basic') {
         }
 
         const data = await page.evaluate((currentPlan, limits) => {
-            const output = {};
+    const output = {};
 
-            output.ogImage = document.querySelector('meta[property="og:image"]')?.content;
-            output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
-            output.ogDesc = document.querySelector('meta[property="og:description"]')?.content;
-            output.pageTitle = document.title;
+    let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
+    if (rawOgImage) {
+        try {
+            const parsed = new URL(rawOgImage, document.location.href);
+            output.ogImage = parsed.origin + parsed.pathname;
+        } catch(e) {
+            output.ogImage = rawOgImage;
+        }
+    } else {
+        output.ogImage = null;
+    }
 
-            const fallbackImage = Array.from(document.querySelectorAll('img[src]'))
-                .map(img => img.src)
-                .find(src => src && !src.includes('data:image') && src.length > 5); 
-            output.fallbackImage = fallbackImage || null;
+    output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
+    output.ogDesc = document.querySelector('meta[property="og:description"]')?.content;
+    output.pageTitle = document.title;
+
+    const fallbackImageSrc = Array.from(document.querySelectorAll('img[src]'))
+        .map(img => img.src)
+        .find(src => src && !src.includes('data:image') && src.length > 5); 
+
+    if (fallbackImageSrc) {
+        try {
+            const parsed = new URL(fallbackImageSrc, document.location.href);
+            output.fallbackImage = parsed.origin + parsed.pathname;
+        } catch(e) {
+            output.fallbackImage = fallbackImageSrc;
+        }
+    } else {
+        
+            output.fallbackImage = null;
 
             if (currentPlan === 'basic') {
                 return output;
