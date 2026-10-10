@@ -588,7 +588,7 @@ async function extractDeepData(url, plan = 'basic') {
                 .find(src => src && !src.includes('data:image') && src.length > 5); 
             output.fallbackImage = fallbackImage || null;
 
-            if (currentPlan === 'free') {
+            if (currentPlan === 'basic') {
                 return output;
             }
 
