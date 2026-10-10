@@ -627,6 +627,7 @@ async function extractDeepData(url, plan = 'basic') {
 
             // 3. Konteynerin içindəki bütün təmiz mətni oxuyuruq
             const rawContent = clone.innerText
+                .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
                 .split('\n')
                 .map(line => line.trim())
                 .filter(line => line.length > 0)
