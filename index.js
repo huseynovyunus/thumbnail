@@ -611,6 +611,7 @@ async function extractDeepData(url, plan = 'basic') {
                 paragraphsToUse = paragraphs.slice(0, paragraphLimit);
             }
 
+            const rawContent = paragraphsToUse.join('\n\n');
             output.pageContent = paragraphsToUse.join('\n\n').substring(0, contentLimit);
 
             const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
