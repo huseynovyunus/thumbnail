@@ -364,20 +364,30 @@ async function extractYouTubeData(url) {
             }
         });
         const data = response.data;
+
+        // 🔍 Kanalın unikal @handle adını author_url-dən tapırıq
+        let channelIdentifier = data.author_name;
+        if (data.author_url && data.author_url.includes('/@')) {
+            const handleMatch = data.author_url.match(/\/(@[^\/?]+)/);
+            if (handleMatch) {
+                channelIdentifier = handleMatch[1]; // Məsələn: @JP.SIN.LIMITES
+            }
+        }
+
         return {
             thumbnail: data.thumbnail_url,
             title: data.title,
-            description: `${data.author_name ? data.author_name.trim() : 'Müəllif'} tərəfindən. Kanal: ${data.provider_name}`,
+            description: `${channelIdentifier ? channelIdentifier.trim() : 'Müəllif'} tərəfindən. Kanal: ${data.provider_name}`,
             embedHtml: `<div class="aspect-w-16 aspect-h-9">${data.html}</div>`,
             is_video: true,
         };
     } catch (error) {
         console.log("[YouTube]: OEmbed failed, using fallback for videoId:", videoId);
         return {
-            thumbnail: data.thumbnail_url,
-            title: data.title,
-            description: `${channelIdentifier} tərəfindən. Kanal: ${data.provider_name}`,
-            embedHtml: `<div class="aspect-w-16 aspect-h-9">${data.html}</div>`,
+            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            title: 'YouTube Video',
+            description: 'YouTube videonun əsas məlumatı',
+            embedHtml: `<div class="aspect-w-16 aspect-h-9"><iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`,
             is_video: true,
         };
     }
