@@ -679,6 +679,33 @@ async function extractDeepData(url, plan = 'basic') {
                          href: new URL(a.href, document.location.href).href
                      }))
                      .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index);
+                     .filter(link => {
+              const href = link.href;
+              if (!href || !href.startsWith('http')) return false;
+
+              // 🚫 Qara siyahı (Dəxilsiz/sistem linkləri)
+              const unwantedPatterns = [
+                  'accounts.google.com',
+                  'support.google.com',
+                  'developers.google.com',
+                  'tv.youtube.com',
+                  '/about/',
+                  '/about/press/',
+                  '/about/copyright/',
+                  '/about/policies/',
+                  '/t/contact_us',
+                  '/creators/',
+                  '/ads/',
+                  '/t/terms',
+                  '/t/privacy',
+                  '/howyoutubeworks',
+                  '/new',
+                  'signin',
+                  'support'
+              ];
+
+              return !unwantedPatterns.some(pattern => href.includes(pattern));
+          }); // <-- Nöqtəli vergül axırda olur
 
                  if (currentPlan === 'mega') {
                      output.links = allLinks; // 🚀 Mega planı üçün BÜTÜN linklər
