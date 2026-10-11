@@ -374,10 +374,10 @@ async function extractYouTubeData(url) {
     } catch (error) {
         console.log("[YouTube]: OEmbed failed, using fallback for videoId:", videoId);
         return {
-            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-            title: 'YouTube Video',
-            description: 'YouTube videonun əsas məlumatı',
-            embedHtml: `<div class="aspect-w-16 aspect-h-9"><iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`,
+            thumbnail: data.thumbnail_url,
+            title: data.title,
+            description: `${channelIdentifier} tərəfindən. Kanal: ${data.provider_name}`,
+            embedHtml: `<div class="aspect-w-16 aspect-h-9">${data.html}</div>`,
             is_video: true,
         };
     }
