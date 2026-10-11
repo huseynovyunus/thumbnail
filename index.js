@@ -689,6 +689,12 @@ async function extractDeepData(url, plan = 'basic') {
                   'support.google.com',
                   'developers.google.com',
                   'tv.youtube.com',
+                  'music.youtube.com',
+                  'youtubekids.com',
+                  'reporthistory',
+                  '/feed/',     // 👈 Bütün feed linklərini təmizləyir (Abunəliklər, Tarixçə, Hayp və s.)
+                  '/channel/',  // 👈 Kanal keçidlərini təmizləyir (Musiqi və s.)
+                  '/premium',   // 👈 Premium səhifəsi
                   '/about/',
                   '/about/press/',
                   '/about/copyright/',
@@ -703,7 +709,7 @@ async function extractDeepData(url, plan = 'basic') {
                   'signin',
                   'support'
               ];
-
+                 
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
 
