@@ -579,6 +579,9 @@ async function extractDeepData(url, plan = 'basic') {
         });
         console.log(`[Puppeteer]: URL-ə keçid uğurlu oldu.`);
 
+        // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         try {
             await page.waitForSelector('meta[property="og:title"], h1, h2, title, body', { timeout: 10000 });
         } catch (e) {
