@@ -834,8 +834,7 @@ app.post('/extract', async (req, res) => {
             }
         });
     }
-
-    const rawPlanInput = req.body?.planType || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
+    const rawPlanInput = req.body?.plan_type || req.body?.planType || req.body?.plan || req.query.plan_type || req.query.plan || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
     const rapidPlanHeader = String(rawPlanInput).toLowerCase();
     
     let userPlan = 'basic'; // Default olaraq basic plan
