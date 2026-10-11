@@ -678,7 +678,7 @@ async function extractDeepData(url, plan = 'basic') {
                          text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
                          href: new URL(a.href, document.location.href).href
                      }))
-                     .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index);
+                     .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
                      .filter(link => {
               const href = link.href;
               if (!href || !href.startsWith('http')) return false;
