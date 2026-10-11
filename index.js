@@ -627,7 +627,7 @@ async function extractDeepData(url, plan = 'basic') {
                 return output;
             }
 
-            const contentLimit = limits.contentLimit[currentPlan] || limits.contentLimit.free;
+            const contentLimit = limits.contentLimit[currentPlan] || limits.contentLimit.basic;
             const paragraphLimit = limits.paragraphLimit[currentPlan];
             const imageLimit = limits.imageLimit[currentPlan];
 
