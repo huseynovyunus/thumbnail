@@ -644,7 +644,13 @@ async function extractDeepData(url, plan = 'basic') {
                 .split('\n')
                 .map(line => line.trim())
                 .filter(line => line.length > 0)
-                .join('\n\n');
+
+            // 🚀 paragraphLimit təyin olunubsa (məsələn, Pro üçün 30 sətir), kəsirik
+            if (paragraphLimit) {
+                lines = lines.slice(0, paragraphLimit);
+            }
+
+            let rawContent = lines.join('\n\n');
 
             // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
