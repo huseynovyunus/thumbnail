@@ -718,11 +718,15 @@ async function extractDeepData(url, plan = 'basic') {
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
 
-                 if (currentPlan === 'mega') {
-                     output.links = allLinks; // 🚀 Mega planı üçün BÜTÜN linklər
-                 } else {
-                     output.links = allLinks.slice(0, 50); // Pro/Ultra üçün limitli
-                 }
+               return !unwantedPatterns.some(pattern => href.includes(pattern));
+        });
+
+        // 🚀 Mega və Ultra planları üçün BÜTÜN linklər, Pro üçün isə limitli (50 link)
+        if (currentPlan === 'mega' || currentPlan === 'ultra') {
+            output.links = allLinks; 
+        } else {
+            output.links = allLinks.slice(0, 50); 
+        }
 
                  output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
                      .map(el => el.src || el.getAttribute('srcdoc')) 
