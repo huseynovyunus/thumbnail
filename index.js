@@ -602,9 +602,9 @@ async function extractDeepData(url, plan = 'basic') {
     } else {
         output.ogImage = null;
     }
-
+    
     output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
-    output.ogDesc = document.querySelector('meta[property="og:description"]')?.content;
+    output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
     output.pageTitle = document.title;
 
     const fallbackImageSrc = Array.from(document.querySelectorAll('img[src]'))
@@ -709,7 +709,6 @@ async function extractDeepData(url, plan = 'basic') {
                   'signin',
                   'support'
               ];
-                 
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
 
