@@ -137,16 +137,16 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // 💵 Həm böyük, həm də kiçik hərfləri dəstəkləyən təhlükəsiz planlar obyekti
 const PRICING_PLANS = {
     // Böyük hərf variantları
-    BASIC: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 19.99 },
-    PRO: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 350, monthlyLimit: 10000, price: 79.99 },
-    ULTRA: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 1000, monthlyLimit: 30000, price: 149.99 },
-    MEGA: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 249.99 },
+    BASIC: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
+    PRO: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
+    ULTRA: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
+    MEGA: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 250 },
 
     // Kiçik hərf variantları (Xətaları sıfırlamaq üçün)
-    basic: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 19.99 },
-    pro: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 350, monthlyLimit: 10000, price: 79.99 },
-    ultra: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 1000, monthlyLimit: 30000, price: 149.99 },
-    mega: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 249.99 }
+    basic: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
+    pro: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
+    ultra: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
+    mega: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 250 }
 };
 
 // 📌 MƏLUMAT VƏ SİMVOL LİMİTLƏRİ
@@ -191,8 +191,8 @@ async function checkRateLimit(userId, plan) {
     // Son təyin olunan gündəlik limitlər
     const limits = {
         basic: 10,
-        pro: 350,
-        ultra: 1000,
+        pro: 400,
+        ultra: 2000,
         mega: 10000
     };
 
