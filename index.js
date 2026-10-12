@@ -152,21 +152,21 @@ const PRICING_PLANS = {
 // 📌 MƏLUMAT VƏ SİMVOL LİMİTLƏRİ
 const PLAN_CONTENT_LIMITS = {
     contentLimit: {
-        basic: 1000,
-        pro: 10000,
-        ultra: 50000,
+        basic: 500,
+        pro: 5000,
+        ultra: null, // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
         mega: null // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
     },
     paragraphLimit: {
         basic: 10,
-        pro: 50,
-        ultra: 200,
+        pro: 30,
+        ultra: null, // Limitsiz paraqraf
         mega: null // Limitsiz paraqraf
     },
     imageLimit: {
-        basic: 10,
-        pro: 50,
-        ultra: 200,
+        basic: 3,
+        pro: 30,
+        ultra: null, // Limitsiz şəkil
         mega: null // Limitsiz şəkil
     }
 };
