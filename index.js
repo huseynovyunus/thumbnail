@@ -785,22 +785,33 @@ app.post('/extract', async (req, res) => {
         });
     }
 
-     let urlObj;
+    let urlObj;
     try {
+        // 1. Zədəli/təkrar protokol yoxlaması (məsələn: https://azhttps://...)
+        if ((url.match(/https:\/\//g) || []).length > 1 || (url.match(/http:\/\//g) || []).length > 1) {
+            return res.status(404).json({
+                status: "error",
+                message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
+            });
+        }
+
         urlObj = new URL(url);
 
+        // 2. Protokol yoxlaması
         if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
             return res.status(400).json({
                 error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
             });
         }
 
+        // 3. SSRF / Private IP yoxlaması
         if (isPrivateOrBlockedIP(urlObj.hostname)) {
             return res.status(403).json({
                 error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
                 hostname: urlObj.hostname
             });
         }
+
     } catch (e) {
         return res.status(400).json({
             error: `URL-i emal etmək mümkün olmadı: ${e.message}`
