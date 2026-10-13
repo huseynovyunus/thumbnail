@@ -126,10 +126,11 @@ function isPrivateOrBlockedIP(input) {
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
 const PRIVATE_IP_RANGES = [
-    { start: '127.0.0.0', end: '127.255.255.255' }, // Loopback
-    { start: '10.0.0.0', end: '10.255.255.255' }, // Class A Private
-    { start: '172.16.0.0', end: '172.31.255.255' }, // Class B Private
-    { start: '192.168.0.0', end: '192.168.255.255' } // Class C Private
+    { start: '127.0.0.0', end: '127.255.255.255' }, // Loopback[cite: 2]
+    { start: '10.0.0.0', end: '10.255.255.255' }, // Class A Private[cite: 2]
+    { start: '172.16.0.0', end: '172.31.255.255' }, // Class B Private[cite: 2]
+    { start: '192.168.0.0', end: '192.168.255.255' }, // Class C Private[cite: 2]
+    { start: '169.254.0.0', end: '169.254.255.255' }  // Link-local / Cloud Metadata (Yeni əlavə)
 ];
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
