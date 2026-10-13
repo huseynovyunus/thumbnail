@@ -583,22 +583,14 @@ async function extractDeepData(url, plan = 'basic') {
         // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        try {
-            await page.waitForSelector('meta[property="og:title"], h1, h2, title, body', { timeout: 10000 });
-        } catch (e) {
-            console.warn('[Puppeteer]: Əsas element 10 saniyə ərzində tapılmadı.');
-        }
-
-        const data = await page.evaluate((currentPlan, limits) => {
-    const output = {};
-
-    let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
+       let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
     if (rawOgImage) {
         try {
             const parsed = new URL(rawOgImage, document.location.href);
-            output.ogImage = parsed.origin + parsed.pathname;
+            // Linkin daxilindəki bütün boşluqları və sətir qırıqlarını təmizləyirik:
+            output.ogImage = (parsed.origin + parsed.pathname).replace(/\s+/g, '').trim();
         } catch(e) {
-            output.ogImage = rawOgImage;
+            output.ogImage = rawOgImage ? rawOgImage.replace(/\s+/g, '').trim() : null;
         }
     } else {
         output.ogImage = null;
