@@ -639,10 +639,10 @@ async function extractDeepData(url, plan = 'basic') {
             const clone = contentContainer.cloneNode(true);
             clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
 
-            // Dəyişənin adını 'lines' edirik:
-let lines = clone.innerText
+            // Bütün sətirləri və artıq boşluqları təmizləyib tək sətrə salırıq:
+const rawContent = clone.innerText
     .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
+    .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və boşluqları tək boşluqla əvəz edir
     .trim();
     .map(line => line.trim())
     .filter(line => line.length > 0);
