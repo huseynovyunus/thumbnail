@@ -638,19 +638,19 @@ async function extractDeepData(url, plan = 'basic') {
             const clone = contentContainer.cloneNode(true);
             clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
 
-            // 3. Konteynerin içindəki bütün təmiz mətni oxuyuruq
-            const rawContent = clone.innerText
-                .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line.length > 0)
+            // Dəyişənin adını 'lines' edirik:
+let lines = clone.innerText
+    .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
 
-            // 🚀 paragraphLimit təyin olunubsa (məsələn, Pro üçün 30 sətir), kəsirik
-            if (paragraphLimit) {
-                lines = lines.slice(0, paragraphLimit);
-            }
+if (paragraphLimit) {
+    lines = lines.slice(0, paragraphLimit);
+}
 
-            let rawContent = lines.join('\n\n');
+// Yalnız burada tək bir dəfə rawContent yaradırıq:
+const rawContent = lines.join('\n\n');
 
             // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
