@@ -718,9 +718,6 @@ const rawContent = lines.join('\n\n');
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
 
-               return !unwantedPatterns.some(pattern => href.includes(pattern));
-        });
-
         // 🚀 Mega və Ultra planları üçün BÜTÜN linklər, Pro üçün isə limitli (50 link)
         if (currentPlan === 'mega' || currentPlan === 'ultra') {
             output.links = allLinks; 
