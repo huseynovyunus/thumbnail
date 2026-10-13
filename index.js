@@ -643,7 +643,7 @@ async function extractDeepData(url, plan = 'basic') {
 const rawContent = clone.innerText
     .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
     .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və boşluqları tək boşluqla əvəz edir
-    .trim();
+    .trim()
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
