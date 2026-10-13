@@ -786,37 +786,46 @@ app.post('/extract', async (req, res) => {
     }
 
     let urlObj;
-    try {
-        // 1. Zədəli/təkrar protokol yoxlaması (məsələn: https://azhttps://...)
-        if ((url.match(/https:\/\//g) || []).length > 1 || (url.match(/http:\/\//g) || []).length > 1) {
-            return res.status(404).json({
-                status: "error",
-                message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
-            });
-        }
+try {
+    if (!url || typeof url !== 'string') {
+        return res.status(400).json({ status: "error", message: "URL təqdim olunmayıb." });
+    }
 
-        urlObj = new URL(url);
+    urlObj = new URL(url);
 
-        // 2. Protokol yoxlaması
-        if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
-            return res.status(400).json({
-                error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
-            });
-        }
-
-        // 3. SSRF / Private IP yoxlaması
-        if (isPrivateOrBlockedIP(urlObj.hostname)) {
-            return res.status(403).json({
-                error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
-                hostname: urlObj.hostname
-            });
-        }
-
-    } catch (e) {
+    // 1. Protokol yoxlaması
+    if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
         return res.status(400).json({
-            error: `URL-i emal etmək mümkün olmadı: ${e.message}`
+            error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
         });
     }
+
+    // 2. Zədəli/təkrar protokol yoxlaması (Məsələn: https://azhttps://... olduqda hostname 'azhttps' olur)
+    if (
+        urlObj.hostname.includes('http') || 
+        urlObj.hostname.includes('://') || 
+        /^[a-zA-Z0-9-]+https?/i.test(urlObj.hostname)
+    ) {
+        return res.status(404).json({
+            status: "error",
+            message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
+        });
+    }
+
+    // 3. SSRF / Private IP yoxlaması
+    if (isPrivateOrBlockedIP(urlObj.hostname)) {
+        return res.status(403).json({
+            error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
+            hostname: urlObj.hostname
+        });
+    }
+
+} catch (e) {
+    return res.status(404).json({
+        status: "error",
+        message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
+    });
+}
     
     // GitHub Xüsusi Handling
     const githubData = await extractGitHubFileData(url);
