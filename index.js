@@ -642,7 +642,8 @@ async function extractDeepData(url, plan = 'basic') {
             // Dəyişənin adını 'lines' edirik:
 let lines = clone.innerText
     .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-    .split('\n')
+    .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
+    .trim();
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
