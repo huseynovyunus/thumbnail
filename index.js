@@ -641,16 +641,13 @@ async function extractDeepData(url, plan = 'basic') {
 
             // Bütün sətirləri və artıq boşluqları təmizləyib tək sətrə salırıq:
             const rawContent = clone.innerText
-    .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
-    .trim();
+                .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
+                .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
+                .trim();
 
-if (paragraphLimit) {
-    lines = lines.slice(0, paragraphLimit);
-}
-
-// Yalnız burada tək bir dəfə rawContent yaradırıq:
-const rawContent = lines.join('\n\n');
+            if (paragraphLimit) {
+                 lines = lines.slice(0, paragraphLimit);
+            }
 
             // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
