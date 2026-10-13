@@ -645,10 +645,6 @@ async function extractDeepData(url, plan = 'basic') {
                 .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
                 .trim();
 
-            if (paragraphLimit) {
-                 lines = lines.slice(0, paragraphLimit);
-            }
-
             // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
