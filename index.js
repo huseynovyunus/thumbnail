@@ -955,27 +955,28 @@ try {
              };
         }
 
-        let responseStatus = 'ok';
-        if (data.deepData?.error?.includes("PUPPETEER LAUNCH CRITICAL ERROR")) {
-            responseStatus = 'critical_failed';
-        } else if (data.deepData?.error) {
-            responseStatus = 'partial_success'; 
-        } else if (!data.title || !data.thumbnail) {
-             responseStatus = 'partial_success'; 
+        // 🟢 BURA ƏLAVƏ OLUNMALIDIR: Əgər xəta varsa və ya səhifə məzmunu yoxdursa, birbaşa 404 qaytarırıq
+        if (data.deepData?.error || !data.title || data.title === 'Başlıq tapılmadı' || data.thumbnail?.includes('No+Thumbnail+Found') || data.thumbnail?.includes('Error+Loading+Page')) {
+            return res.status(404).json({
+                status: "error",
+                plan_type: user.plan,
+                message: data.deepData?.error || "Səhifə və ya məzmun tapılmadı (404)"
+            });
         }
 
         const responseBody = {
-            status: responseStatus,
+            status: 'ok',
             plan_type: user.plan,
-            name: data.title || 'Başlıq tapılmadı',
-            description: data.description || 'Təsvir tapılmadı',
-            thumbnail_url: data.thumbnail || 'https://via.placeholder.com/640x360?text=Xəta',
+            name: data.title,
+            description: data.description,
+            thumbnail_url: data.thumbnail,
             embed_html: data.embedHtml || null,
             is_video: data.is_video,
             deep_data: data.deepData
         };
         
-        return res.status(200).json(responseBody);
+        return res.status(200).json(responseBody);[cite: 1]
+        
     } catch (error) {
         console.error('❌ Ümumi API Xətası:', error.message);
         return res.status(500).json({
