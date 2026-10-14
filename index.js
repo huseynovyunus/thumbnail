@@ -592,6 +592,20 @@ async function extractDeepData(url, plan = 'basic') {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         const data = await page.evaluate(async (plan, limits) => {
+            let output = {
+                ogImage: null,
+                ogTitle: null,
+                ogDesc: null,
+                pageTitle: null,
+                fallbackImage: null,
+                pageContent: null,
+                images: [],
+                links: [],
+                videoSources: [],
+                has_video_sources: false
+            };
+
+        const data = await page.evaluate(async (plan, limits) => {
             let output = {};
 
        let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
