@@ -986,7 +986,7 @@ try {
             deep_data: data.deepData
         };
         
-        return res.status(200).json(responseBody);[cite: 1]
+        return res.status(200).json(responseBody);
         
     } catch (error) {
         console.error('❌ Ümumi API Xətası:', error.message);
