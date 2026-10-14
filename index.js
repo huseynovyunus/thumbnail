@@ -662,7 +662,7 @@ async function extractDeepData(url, plan = 'basic') {
             output.images = images;
         }
 
-           if (currentPlan === 'pro' || currentPlan === 'ultra' || currentPlan === 'mega') {
+           if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
                  const allLinks = Array.from(document.querySelectorAll('a[href]'))
                      .map(a => ({
                          text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
@@ -703,7 +703,7 @@ async function extractDeepData(url, plan = 'basic') {
           }); // <-- Nöqtəli vergül axırda olur
 
         // 🚀 Mega və Ultra planları üçün BÜTÜN linklər, Pro üçün isə limitli (50 link)
-        if (currentPlan === 'mega' || currentPlan === 'ultra') {
+        if (plan === 'mega' || plan === 'ultra') {
             output.links = allLinks; 
         } else {
             output.links = allLinks.slice(0, 50); 
