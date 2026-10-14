@@ -605,9 +605,6 @@ async function extractDeepData(url, plan = 'basic') {
                 has_video_sources: false
             };
 
-        const data = await page.evaluate(async (plan, limits) => {
-            let output = {};
-
        let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
     if (rawOgImage) {
         try {
