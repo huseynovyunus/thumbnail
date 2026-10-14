@@ -746,7 +746,12 @@ async function extractDeepData(url, plan = 'basic') {
             }
         }
 
-        return result;
+        // 🟢 BURA ƏLAVƏ OLUNMALIDIR:
+        if (!result.title || result.title === 'Başlıq tapılmadı' || result.thumbnail?.includes('No+Thumbnail+Found')) {
+            result.deepData.error = "Səhifə tapılmadı və ya məzmun etibarsızdır.";
+        }
+
+        return result;[cite: 1]
 
     } catch (error) {
         console.error(`❌ Puppeteer Xətası URL ${url}: ${error.message}`);
