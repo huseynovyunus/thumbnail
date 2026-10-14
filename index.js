@@ -762,7 +762,7 @@ async function extractDeepData(url, plan = 'basic') {
             result.deepData.error = "Səhifə tapılmadı və ya məzmun etibarsızdır.";
         }
 
-        return result;[cite: 1]
+        return result;
 
     } catch (error) {
         console.error(`❌ Puppeteer Xətası URL ${url}: ${error.message}`);
