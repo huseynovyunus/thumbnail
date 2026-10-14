@@ -574,10 +574,18 @@ async function extractDeepData(url, plan = 'basic') {
 
         console.log(`[Puppeteer]: URL-ə keçid edilir: ${url}`);
         
-        await page.goto(url, {
+        const responseObj = await page.goto(url, {
             waitUntil: 'domcontentloaded', 
             timeout: 60000 
         });
+
+        // 🟢 404 və ya digər xəta statuslarını birbaşa burada yaxalayırıq:
+        if (responseObj && responseObj.status() >= 400) {
+            result.thumbnail = 'https://via.placeholder.com/640x360?text=Page+Not+Found';
+            result.deepData.error = `SƏHİFƏ XƏTASI: HTTP Status ${responseObj.status()}`;
+            return result;
+        }
+        
         console.log(`[Puppeteer]: URL-ə keçid uğurlu oldu.`);
 
         // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
