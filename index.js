@@ -615,8 +615,7 @@ async function extractDeepData(url, plan = 'basic') {
         
             output.fallbackImage = null;
     }
-
-            if (currentPlan === 'basic') {
+            if (plan === 'basic') {
                 return output;
             }
 
