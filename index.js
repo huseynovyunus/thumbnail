@@ -1007,6 +1007,6 @@ app.get('/admin-panel', (req, res) => {
 console.log("SERVER BAŞLAYIR...");
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`API işləyir: http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`API işləyir: http://0.0.0.0:${PORT}`);
 });
