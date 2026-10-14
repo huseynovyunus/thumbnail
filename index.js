@@ -619,9 +619,9 @@ async function extractDeepData(url, plan = 'basic') {
                 return output;
             }
 
-            const contentLimit = limits.contentLimit[currentPlan] || limits.contentLimit.basic;
-            const paragraphLimit = limits.paragraphLimit[currentPlan];
-            const imageLimit = limits.imageLimit[currentPlan];
+            const contentLimit = limits.contentLimit[plan] || limits.contentLimit.basic;
+            const paragraphLimit = limits.paragraphLimit[plan];
+            const imageLimit = limits.imageLimit[plan];
 
             // 1. Əsas məzmun konteynerini tapırıq (Vikipediya üçün #mw-content-text, digərləri üçün main və ya body)
             const contentContainer = document.querySelector('#mw-content-text') || document.querySelector('main') || document.body;
