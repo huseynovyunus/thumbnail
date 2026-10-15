@@ -704,9 +704,9 @@ async function extractDeepData(url, plan = 'basic') {
                   'music.youtube.com',
                   'youtubekids.com',
                   'reporthistory',
-                  '/feed/',     // 👈 Bütün feed linklərini təmizləyir (Abunəliklər, Tarixçə, Hayp və s.)
-                  '/channel/',  // 👈 Kanal keçidlərini təmizləyir (Musiqi və s.)
-                  '/premium',   // 👈 Premium səhifəsi
+                  '/feed/',     
+                  '/channel/',  
+                  '/premium',   
                   '/about/',
                   '/about/press/',
                   '/about/copyright/',
@@ -714,20 +714,23 @@ async function extractDeepData(url, plan = 'basic') {
                   '/t/contact_us',
                   '/creators/',
                   '/ads/',
-                  '/t/terms',
-                  '/t/privacy',
-                  '/howyoutubeworks',
-                  '/new',
-                  'signin',
-                  'support',
-                  // 👇 Instagram, TikTok və digərləri üçün əlavə olunanlar:
+                  '/t/terms',   
                   '/accounts/',
                   '/login',
                   '/signup',
                   '/privacy',
                   '/support',
-                  '/legal/'
-                ];
+                  '/legal/',
+                  // 👇 Footer və sistem sözləri üçün əlavə edilənlər:
+                  'about',
+                  'help',
+                  'jobs',
+                  'api',
+                  'locations',
+                  'popular',
+                  'threads',
+                  'meta.com'
+              ];
                          
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
