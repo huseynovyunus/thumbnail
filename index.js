@@ -591,6 +591,7 @@ async function extractDeepData(url, plan = 'basic') {
         // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
         await new Promise(resolve => setTimeout(resolve, 2000));
 
+        // 🌟 KÖHNƏ KODUN YERİNƏ BU TƏMİZ BLOKU ƏLAVƏ EDİRƏN:
         const data = await page.evaluate(async (plan, limits) => {
             let output = {
                 ogImage: null,
