@@ -709,13 +709,6 @@ async function extractDeepData(url, plan = 'basic') {
                  }
            }
 
-        // 🚀 Mega və Ultra planları üçün BÜTÜN linklər, Pro üçün isə limitli (50 link)
-        if (plan === 'mega' || plan === 'ultra') {
-            output.links = allLinks; 
-        } else {
-            output.links = allLinks.slice(0, 50); 
-        }
-
                  output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
                      .map(el => el.src || el.getAttribute('srcdoc')) 
                      .filter(Boolean)
