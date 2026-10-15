@@ -719,7 +719,9 @@ async function extractDeepData(url, plan = 'basic') {
              }
 
             return output;
-        }, plan, limits); 
+        }
+        
+   }, plan, limits); 
 
         result.thumbnail = data.ogImage || data.fallbackImage || 'https://via.placeholder.com/640x360?text=No+Thumbnail+Found';
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
