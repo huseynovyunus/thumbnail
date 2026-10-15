@@ -684,56 +684,30 @@ async function extractDeepData(url, plan = 'basic') {
             output.images = images;
         }
 
-           if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
-                 const allLinks = Array.from(document.querySelectorAll('a[href]'))
+        if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
+                 // 1. Yalnız əsas məzmun sahəsini seçirik (menyular və footer avtomatik kənarda qalır)
+                 const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
+
+                 const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
                      .map(a => ({
                          text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
                          href: new URL(a.href, document.location.href).href
                      }))
                      .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
                      .filter(link => {
-              const href = link.href;
-              if (!href || !href.startsWith('http')) return false;
+                         const href = link.href;
+                         if (!href || !href.startsWith('http')) return false;
+                         if (href.includes('/wiki/')) return false; // Vikipediyanın daxili keçidləri üçün
+                         return true;
+                     });
 
-              // 🚫 Qara siyahı (Dəxilsiz/sistem linkləri)
-              const unwantedPatterns = [
-                  'accounts.google.com',
-                  'support.google.com',
-                  'developers.google.com',
-                  'tv.youtube.com',
-                  'music.youtube.com',
-                  'youtubekids.com',
-                  'reporthistory',
-                  '/feed/',     
-                  '/channel/',  
-                  '/premium',   
-                  '/about/',
-                  '/about/press/',
-                  '/about/copyright/',
-                  '/about/policies/',
-                  '/t/contact_us',
-                  '/creators/',
-                  '/ads/',
-                  '/t/terms',   
-                  '/accounts/',
-                  '/login',
-                  '/signup',
-                  '/privacy',
-                  '/support',
-                  '/legal/',
-                  // 👇 Footer və sistem sözləri üçün əlavə edilənlər:
-                  'about',
-                  'help',
-                  'jobs',
-                  'api',
-                  'locations',
-                  'popular',
-                  'threads',
-                  'meta.com'
-              ];
-                         
-              return !unwantedPatterns.some(pattern => href.includes(pattern));
-          }); // <-- Nöqtəli vergül axırda olur
+                 // 2. Plan limitlərinə uyğun olaraq təyin edirik
+                 if (plan === 'mega' || plan === 'ultra') {
+                     output.links = allLinks; 
+                 } else {
+                     output.links = allLinks.slice(0, 50); 
+                 }
+           }
 
         // 🚀 Mega və Ultra planları üçün BÜTÜN linklər, Pro üçün isə limitli (50 link)
         if (plan === 'mega' || plan === 'ultra') {
