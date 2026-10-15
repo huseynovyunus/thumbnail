@@ -719,7 +719,7 @@ async function extractDeepData(url, plan = 'basic') {
                   '/howyoutubeworks',
                   '/new',
                   'signin',
-                  'support'
+                  'support',
                   // 👇 Instagram, TikTok və digərləri üçün əlavə olunanlar:
                   '/accounts/',
                   '/login',
