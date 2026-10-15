@@ -591,7 +591,6 @@ async function extractDeepData(url, plan = 'basic') {
         // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // 🌟 KÖHNƏ KODUN YERİNƏ BU TƏMİZ BLOKU ƏLAVƏ EDİRƏN:
         const data = await page.evaluate(async (plan, limits) => {
             let output = {
                 ogImage: null,
@@ -606,38 +605,37 @@ async function extractDeepData(url, plan = 'basic') {
                 has_video_sources: false
             };
 
-       let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
-    if (rawOgImage) {
-        try {
-            const parsed = new URL(rawOgImage, document.location.href);
-            // Linkin daxilindəki bütün boşluqları və sətir qırıqlarını təmizləyirik:
-            output.ogImage = (parsed.origin + parsed.pathname).replace(/\s+/g, '').trim();
-        } catch(e) {
-            output.ogImage = rawOgImage ? rawOgImage.replace(/\s+/g, '').trim() : null;
-        }
-    } else {
-        output.ogImage = null;
-    }
-    
-    output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
-    output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
-    output.pageTitle = document.title;
+            let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
+            if (rawOgImage) {
+                try {
+                    const parsed = new URL(rawOgImage, document.location.href);
+                    output.ogImage = (parsed.origin + parsed.pathname).replace(/\s+/g, '').trim();
+                } catch(e) {
+                    output.ogImage = rawOgImage ? rawOgImage.replace(/\s+/g, '').trim() : null;
+                }
+            } else {
+                output.ogImage = null;
+            }
+            
+            output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
+            output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
+            output.pageTitle = document.title;
 
-    const fallbackImageSrc = Array.from(document.querySelectorAll('img[src]'))
-        .map(img => img.src)
-        .find(src => src && !src.includes('data:image') && src.length > 5); 
+            const fallbackImageSrc = Array.from(document.querySelectorAll('img[src]'))
+                .map(img => img.src)
+                .find(src => src && !src.includes('data:image') && src.length > 5); 
 
-    if (fallbackImageSrc) {
-        try {
-            const parsed = new URL(fallbackImageSrc, document.location.href);
-            output.fallbackImage = parsed.origin + parsed.pathname;
-        } catch(e) {
-            output.fallbackImage = fallbackImageSrc;
-        }
-    } else {
-        
-            output.fallbackImage = null;
-    }
+            if (fallbackImageSrc) {
+                try {
+                    const parsed = new URL(fallbackImageSrc, document.location.href);
+                    output.fallbackImage = parsed.origin + parsed.pathname;
+                } catch(e) {
+                    output.fallbackImage = fallbackImageSrc;
+                }
+            } else {
+                output.fallbackImage = null;
+            }
+
             if (plan === 'basic') {
                 return output;
             }
@@ -646,82 +644,67 @@ async function extractDeepData(url, plan = 'basic') {
             const paragraphLimit = limits.paragraphLimit[plan];
             const imageLimit = limits.imageLimit[plan];
 
-            // 1. Əsas məzmun konteynerini tapırıq (Vikipediya üçün #mw-content-text, digərləri üçün main və ya body)
-            const contentContainer = document.querySelector('#mw-content-text') || document.querySelector('main') || document.body;
+            const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
             
-            // 2. Klonlayıb lazımsız menyuları, skriptləri və düymələri təmizləyirik
             const clone = contentContainer.cloneNode(true);
             clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
 
-            // Bütün sətirləri və artıq boşluqları təmizləyib tək sətrə salırıq:
             const rawContent = clone.innerText
                 .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-                .replace(/\s+/g, ' ')  // Bütün alt-alta sətirləri və artıq boşluqları tək boşluqla əvəz edir
+                .replace(/\s+/g, ' ')
                 .trim();
 
-            // 4. Plan limitinə uyğun olaraq qaytarırıq (Mega üçün null olduğundan bütün mətn qayıdacaq)
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
-        const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
-            .flatMap(el => {
-                const sources = [];
-                if (el.src) sources.push(el.src);
-                if (el.srcset) {
-                    const firstSrcsetMatch = el.srcset.match(/^\s*([^,\s]+)/); 
-                    if (firstSrcsetMatch) sources.push(firstSrcsetMatch[1]);
+            const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
+                .flatMap(el => {
+                    const sources = [];
+                    if (el.src) sources.push(el.src);
+                    if (el.srcset) {
+                        const firstSrcsetMatch = el.srcset.match(/^\s*([^,\s]+)/); 
+                        if (firstSrcsetMatch) sources.push(firstSrcsetMatch[1]);
+                    }
+                    return sources;
+                })
+                .filter(src => src && !src.includes('data:image'))
+                .map(src => {
+                    const parsed = new URL(src, document.location.href);
+                    return parsed.origin + parsed.pathname;
+                })
+                .filter((value, index, self) => self.indexOf(value) === index);
+
+            output.images = imageLimit ? images.slice(0, imageLimit) : images;
+
+            if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
+                const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
+                    .map(a => ({
+                        text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
+                        href: new URL(a.href, document.location.href).href
+                    }))
+                    .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
+                    .filter(link => {
+                        const href = link.href;
+                        if (!href || !href.startsWith('http')) return false;
+                        if (href.includes('/wiki/')) return false;
+                        return true;
+                    });
+
+                if (plan === 'mega' || plan === 'ultra') {
+                    output.links = allLinks; 
+                } else {
+                    output.links = allLinks.slice(0, 50); 
                 }
-                return sources;
-            })
-            .filter(src => src && !src.includes('data:image'))
-            .map(src => {
-                const parsed = new URL(src, document.location.href);
-                return parsed.origin + parsed.pathname; // UTM parametrlərini avtomatik təmizləyir
-            })
-            .filter((value, index, self) => self.indexOf(value) === index);
 
-        if (imageLimit) {
-            output.images = images.slice(0, imageLimit);
-        } else {
-            output.images = images;
-        }
-
-        if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
-                 // 1. Yalnız əsas məzmun sahəsini seçirik (menyular və footer avtomatik kənarda qalır)
-                 const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
-
-                 const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
-                     .map(a => ({
-                         text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
-                         href: new URL(a.href, document.location.href).href
-                     }))
-                     .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
-                     .filter(link => {
-                         const href = link.href;
-                         if (!href || !href.startsWith('http')) return false;
-                         if (href.includes('/wiki/')) return false; // Vikipediyanın daxili keçidləri üçün
-                         return true;
-                     });
-
-                 // 2. Plan limitlərinə uyğun olaraq təyin edirik
-                 if (plan === 'mega' || plan === 'ultra') {
-                     output.links = allLinks; 
-                 } else {
-                     output.links = allLinks.slice(0, 50); 
-                 }
-           }
-
-                 output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
-                     .map(el => el.src || el.getAttribute('srcdoc')) 
-                     .filter(Boolean)
-                     .filter((value, index, self) => self.indexOf(value) === index);
-                 
-                 output.has_video_sources = output.videoSources.length > 0;
-             }
+                output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
+                    .map(el => el.src || el.getAttribute('srcdoc')) 
+                    .filter(Boolean)
+                    .filter((value, index, self) => self.indexOf(value) === index);
+                
+                output.has_video_sources = output.videoSources.length > 0;
+            }
 
             return output;
-        }
-        
-   }, plan, limits); 
+        }, plan, limits);
 
         result.thumbnail = data.ogImage || data.fallbackImage || 'https://via.placeholder.com/640x360?text=No+Thumbnail+Found';
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
