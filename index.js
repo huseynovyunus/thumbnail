@@ -720,7 +720,15 @@ async function extractDeepData(url, plan = 'basic') {
                   '/new',
                   'signin',
                   'support'
-              ];
+                  // 👇 Instagram, TikTok və digərləri üçün əlavə olunanlar:
+                  '/accounts/',
+                  '/login',
+                  '/signup',
+                  '/privacy',
+                  '/support',
+                  '/legal/'
+                ];
+                         
               return !unwantedPatterns.some(pattern => href.includes(pattern));
           }); // <-- Nöqtəli vergül axırda olur
 
