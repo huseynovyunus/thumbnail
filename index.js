@@ -1,4 +1,106 @@
- [                }
+// Asılılıqları daxil edirik
+require('dotenv').config();
+
+const express = require('express');
+const axios = require('axios');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
+
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 2. SIGORTA MIDDLEWARE: Əgər Content-Type undefined gələrsə, xam gövdəni özümüz oxuyub JSON-a çeviririk
+app.use((req, res, next) => {
+    if (!req.body || Object.keys(req.body).length === 0) {
+        let data = '';
+        req.on('data', chunk => {
+            data += chunk;
+        });
+        req.on('end', () => {
+            if (data) {
+                try {
+                    req.body = JSON.parse(data);
+                    console.log("🛠️ [XAM BODY MANUAL OXUNDU]:", req.body);
+                } catch (e) {
+                    req.body = { url: data }; // Əgər sadə sətir kimi gəlibsə
+                }
+            }
+            next();
+        });
+    } else {
+        next();
+    }
+});
+
+function checkApiKey(req) {
+    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
+    if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
+        console.log("✅ RapidAPI Proxy təsdiqləndi");
+        return { key: 'rapidapi-proxy' };
+    }
+
+    // Əgər RapidAPI istifadəçisi kimi gəlibsə
+    const rapidApiUser = req.headers['x-rapidapi-user'];
+    if (rapidApiUser) {
+        console.log("✅ RapidAPI İstifadəçisi təsdiqləndi:", rapidApiUser);
+        return { key: rapidApiUser };
+    }
+
+    // Kənar sorğular üçün birbaşa Açar yoxlanılması
+    const rawHeader =
+        req.headers['x-api-key'] ||
+        req.headers['x-rapidapi-key'] ||
+        req.headers['authorization'] ||
+        null;
+
+    if (!rawHeader) {
+        console.log("❌ API KEY tapılmadı");
+        return null;
+    }
+
+    const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
+
+    if (process.env.RAPIDAPI_KEY && apiKey !== process.env.RAPIDAPI_KEY) {
+        console.log("❌ API KEY düzgün deyil");
+        return null;
+    }
+
+    console.log("✅ API KEY uğurla qəbul edildi");
+    return { key: apiKey };
+}
+
+// 🛡️ URL-in və ya Hostnamenin təhlükəsiz olub olmadığını yoxlayan funksiya
+function isPrivateOrBlockedIP(input) {
+    try {
+        let hostname = input;
+        
+        // Əgər tam URL daxil edilibsə, hostnameni ayırırıq
+        if (input && input.includes('://')) {
+            const parsedUrl = new URL(input);
+            hostname = parsedUrl.hostname;
+        }
+
+        if (!hostname) return true;
+
+        const lowerHostname = hostname.toLowerCase();
+
+        // 1. Dəqiq bloklanmış hostlar (localhost, 0.0.0.0 və s.)
+        if (BLOCKED_HOSTS_EXACT.includes(lowerHostname)) {
+            return true;
+        }
+
+        // 2. IP formatındadırsa, private diapazonları yoxlayırıq
+        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+        if (isIp) {
+            const ipLong = ipToLong(hostname);
+            for (const range of PRIVATE_IP_RANGES) {
+                const startLong = ipToLong(range.start);
+                const endLong = ipToLong(range.end);
+                if (ipLong >= startLong && ipLong <= endLong) {
+                    return true; // Private IP-dir, blokla
+                }
             }
             return false; // Public IP-dir, icazə ver
         }
