@@ -451,7 +451,7 @@ async function extractTikTokData(url) {
         }
         return null;
     }
-}
+
 
 async function extractInstagramData(url) {
     if (url.includes('instagram.com')) {
