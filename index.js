@@ -395,25 +395,58 @@ async function extractYouTubeData(url) {
 }
 
 async function extractTikTokData(url) {
-    const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
+    if (!url) return null;
+
+    let targetUrl = url;
+
+    // 1. Əgər link qısa TikTok linkidirsə (vm/vt), əvvəlcə əsl (uzun) URL-ə çeviririk
+    if (targetUrl.includes('vm.tiktok.com') || targetUrl.includes('vt.tiktok.com')) {
+        try {
+            const redirectResponse = await axios.get(targetUrl, {
+                maxRedirects: 5,
+                validateStatus: (status) => status >= 200 && status < 400,
+                headers: { 
+                    'User-Agent': USER_AGENT 
+                }
+            });
+            targetUrl = redirectResponse.request.res.responseUrl || redirectResponse.config.url || targetUrl;
+            console.log(`[TikTok]: Qısa link uzun linkə çevrildi: ${targetUrl}`);
+        } catch (redirectError) {
+            console.warn(`[TikTok]: Qısa link çözülə bilmədi, orijinal istifadə olunur: ${redirectError.message}`);
+        }
+    }
+
+    // 2. Təmizlənmiş uzun URL ilə TikTok-un oEmbed endpoint-inə sorğu atırıq
+    const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(targetUrl)}`;
     try {
-        const response = await axios.get(oembedUrl, { timeout: 5000 });
+        const response = await axios.get(oembedUrl, { 
+            timeout: 8000,
+            headers: {
+                'User-Agent': USER_AGENT
+            }
+        });
         const data = response.data;
+
         return {
             thumbnail: data.thumbnail_url,
             title: data.title || 'TikTok Videosu',
             description: data.author_name ? `${data.author_name} tərəfindən.` : 'TikTok məzmunu',
             embedHtml: data.html || null,
             is_video: true,
+            resolved_url: targetUrl // Tələb olunarsa açılmış uzun URL
         };
     } catch (error) {
-        if (url.includes('tiktok.com')) {
+        console.error(`[TikTok]: OEmbed sorğusu uğursuz oldu: ${error.message}`);
+        
+        // 3. Əgər oEmbed uğursuz olarsa, mövcud fallback mexanizmini qoruyuruq
+        if (targetUrl.includes('tiktok.com')) {
             return {
                 thumbnail: 'https://via.placeholder.com/640x360?text=TikTok+Content',
                 title: 'TikTok Məzmunu (OEmbed Xətası)',
                 description: 'TikTok məzmunu (API vasitəsilə çıxarılmadı).',
                 embedHtml: null,
                 is_video: true,
+                resolved_url: targetUrl
             };
         }
         return null;
