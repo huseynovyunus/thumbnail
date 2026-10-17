@@ -71,30 +71,12 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
-// 🌐 TƏHLÜKƏSİZLİK VƏ PERFORMANS KONFİGURASİYASI
-const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
-const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
-const PRIVATE_IP_RANGES = [
-    { start: '127.0.0.0', end: '127.255.255.255' },       // Loopback
-    { start: '10.0.0.0', end: '10.255.255.255' },         // Class A Private
-    { start: '172.16.0.0', end: '172.31.255.255' },       // Class B Private
-    { start: '192.168.0.0', end: '192.168.255.255' },     // Class C Private
-    { start: '169.254.0.0', end: '169.254.255.255' }      // Link-local / Cloud Metadata (SSRF Mühafizəsi)
-];
-
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
-
-function ipToLong(ip) {
-    const parts = ip.split('.');
-    if (parts.length !== 4) return 0;
-    return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
-}
-
 // 🛡️ URL-in və ya Hostnamenin təhlükəsiz olub olmadığını yoxlayan funksiya
 function isPrivateOrBlockedIP(input) {
     try {
         let hostname = input;
         
+        // Əgər tam URL daxil edilibsə, hostnameni ayırırıq
         if (input && input.includes('://')) {
             const parsedUrl = new URL(input);
             hostname = parsedUrl.hostname;
@@ -128,19 +110,40 @@ function isPrivateOrBlockedIP(input) {
             return true;
         }
 
+        // Public domenlər (youtube.com, github.com və s.) buradan false qayıdacaq və sorğu keçəcək
         return false;
     } catch (error) {
         console.error("SSRF Check Error:", error.message);
-        return true;
+        return true; // Xəta baş verərsə təhlükəsizlik üçün blokla
     }
 }
 
-// 💵 Planlar obyekti
+// ------------------------------------------------------------------
+// KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
+// ------------------------------------------------------------------
+
+// 🌐 TƏHLÜKƏSİZLİK VƏ PERFORMANS KONFİGURASİYASI (Dəyişməz)
+const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
+const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
+const PRIVATE_IP_RANGES = [
+    { start: '127.0.0.0', end: '127.255.255.255' }, // Loopback[cite: 2]
+    { start: '10.0.0.0', end: '10.255.255.255' }, // Class A Private[cite: 2]
+    { start: '172.16.0.0', end: '172.31.255.255' }, // Class B Private[cite: 2]
+    { start: '192.168.0.0', end: '192.168.255.255' }, // Class C Private[cite: 2]
+    { start: '169.254.0.0', end: '169.254.255.255' }  // Link-local / Cloud Metadata (Yeni əlavə)
+];
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
+
+// 💵 Həm böyük, həm də kiçik hərfləri dəstəkləyən təhlükəsiz planlar obyekti
 const PRICING_PLANS = {
+    // Böyük hərf variantları
     BASIC: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
     PRO: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
     ULTRA: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
     MEGA: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 250 },
+
+    // Kiçik hərf variantları (Xətaları sıfırlamaq üçün)
     basic: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
     pro: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
     ultra: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
@@ -152,20 +155,20 @@ const PLAN_CONTENT_LIMITS = {
     contentLimit: {
         basic: 500,
         pro: 5000,
-        ultra: null,
-        mega: null
+        ultra: null, // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
+        mega: null // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
     },
     paragraphLimit: {
         basic: 10,
         pro: 30,
-        ultra: null,
-        mega: null
+        ultra: null, // Limitsiz paraqraf
+        mega: null // Limitsiz paraqraf
     },
     imageLimit: {
         basic: 3,
         pro: 30,
-        ultra: null,
-        mega: null
+        ultra: null, // Limitsiz şəkil
+        mega: null // Limitsiz şəkil
     }
 };
 
@@ -176,12 +179,17 @@ const PLAN_ACCESS = {
     mega: 4
 };
 
+// ------------------------------------------------------------------
+// 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
+// ------------------------------------------------------------------
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) {
         global.rateLimits = {};
     }
 
     const key = userId || "guest";
+
+    // Son təyin olunan gündəlik limitlər
     const limits = {
         basic: 10,
         pro: 400,
@@ -190,39 +198,87 @@ async function checkRateLimit(userId, plan) {
     };
 
     const normalizedPlan = String(plan || "basic").toLowerCase();
-    const limit = limits[normalizedPlan] || limits.basic;
+    const limit = limits[normalizedPlan] || limits.basic;
 
-    if (!global.rateLimits[key]) {
-        global.rateLimits[key] = {
-            count: 0,
-            createdAt: Date.now()
-        };
-    }
+    if (!global.rateLimits[key]) {
+        global.rateLimits[key] = {
+            count: 0,
+            createdAt: Date.now()
+        };
+    }
 
-    const data = global.rateLimits[key];
+    const data = global.rateLimits[key];
 
-    if (Date.now() - data.createdAt > 86400000) {
-        data.count = 0;
-        data.createdAt = Date.now();
-    }
+    // 24 saat keçibsə limiti sıfırla
+    if (Date.now() - data.createdAt > 86400000) {
+        data.count = 0;
+        data.createdAt = Date.now();
+    }
 
-    data.count++;
+    data.count++;
 
-    if (data.count > limit) {
-        return {
-            allowed: false,
-            retryAfter: 86400
-        };
-    }
+    if (data.count > limit) {
+        return {
+            allowed: false,
+            retryAfter: 86400
+        };
+    }
 
-    return {
-        allowed: true,
-        remaining: limit - data.count
-    };
+    return {
+        allowed: true,
+        remaining: limit - data.count
+    };
 }
 
+function ipToLong(ip) {
+    const parts = ip.split('.');
+
+    if (parts.length !== 4) return 0;
+
+    return parts.reduce(
+        (acc, part) => (acc * 256) + parseInt(part, 10),
+        0
+    );
+}
+
+// Proksi əldə etmək üçün çatışmayan köməkçi funksiya
 function getRandomProxy() {
+    // Hələlik proksi siyahısı istifadə olunmadığı üçün sadəcə null qaytarır
     return null;
+}
+
+// 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
+function isPrivateIP(ip) {
+    const long = ipToLong(ip);
+    
+    // Loopback (127.0.0.1 / 8)
+    const loopbackStart = ipToLong('127.0.0.0');
+    const loopbackEnd = ipToLong('127.255.255.255');
+    
+    // Private Class A (10.0.0.0 / 8)
+    const classAStart = ipToLong('10.0.0.0');
+    const classAEnd = ipToLong('10.255.255.255');
+    
+    // Private Class B (172.16.0.0 / 12)
+    const classBStart = ipToLong('172.16.0.0');
+    const classBEnd = ipToLong('172.31.255.255');
+    
+    // Private Class C (192.168.0.0 / 16)
+    const classCStart = ipToLong('192.168.0.0');
+    const classCEnd = ipToLong('192.168.255.255');
+    
+    // Link-local / AWS Metadata (169.254.0.0 / 16)
+    const linkLocalStart = ipToLong('169.254.0.0');
+    const linkLocalEnd = ipToLong('169.254.255.255');
+
+    return (
+        (long >= loopbackStart && long <= loopbackEnd) ||
+        (long >= classAStart && long <= classAEnd) ||
+        (long >= classBStart && long <= classBEnd) ||
+        (long >= classCStart && long <= classCEnd) ||
+        (long >= linkLocalStart && long <= linkLocalEnd) ||
+        ip === '0.0.0.0'
+    );
 }
 
 // 🔧 GitHub File Data Extraction
@@ -242,11 +298,15 @@ async function extractGitHubFileData(url) {
             console.log(`[GitHub]: Owner: ${owner}, Repo: ${repo}, Branch: ${branch}, File: ${filePath}`);
 
             const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+            console.log(`[GitHub]: Raw URL: ${rawUrl}`);
+
             const response = await axios.get(rawUrl, { timeout: 15000 });
             const text = response.data || '';
 
             const fileName = filePath.split('/').pop() || 'file';
-            const preview = String(text).replace(/\s+/g, ' ').trim().slice(0, 500);
+            const preview = text.replace(/\s+/g, ' ').trim().slice(0, 500);
+
+            console.log(`[GitHub]: File extracted successfully - ${fileName}`);
 
             return {
                 title: `${owner}/${repo} - ${fileName}`,
@@ -292,6 +352,7 @@ async function extractYouTubeData(url) {
     const videoIdMatch = url.match(/(?:v=|\/embed\/|youtu\.be\/|\/v\/|\/vi\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
     const videoId = videoIdMatch?.[1];
     if (!videoId) {
+        console.log("[YouTube]: Video ID not found for URL:", url);
         return {};
     }
 
@@ -299,15 +360,18 @@ async function extractYouTubeData(url) {
     try {
         const response = await axios.get(oembedUrl, { 
             timeout: 8000,
-            headers: { 'User-Agent': USER_AGENT }
+            headers: {
+                'User-Agent': USER_AGENT
+            }
         });
         const data = response.data;
 
+        // 🔍 Kanalın unikal @handle adını author_url-dən tapırıq
         let channelIdentifier = data.author_name;
         if (data.author_url && data.author_url.includes('/@')) {
             const handleMatch = data.author_url.match(/\/(@[^\/?]+)/);
             if (handleMatch) {
-                channelIdentifier = handleMatch[1];
+                channelIdentifier = handleMatch[1]; // Məsələn: @JP.SIN.LIMITES
             }
         }
 
@@ -319,6 +383,7 @@ async function extractYouTubeData(url) {
             is_video: true,
         };
     } catch (error) {
+        console.log("[YouTube]: OEmbed failed, using fallback for videoId:", videoId);
         return {
             thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
             title: 'YouTube Video',
@@ -346,7 +411,7 @@ async function extractTikTokData(url) {
             return {
                 thumbnail: 'https://via.placeholder.com/640x360?text=TikTok+Content',
                 title: 'TikTok Məzmunu (OEmbed Xətası)',
-                description: 'TikTok məzmunu.',
+                description: 'TikTok məzmunu (API vasitəsilə çıxarılmadı).',
                 embedHtml: null,
                 is_video: true,
             };
@@ -360,7 +425,7 @@ async function extractInstagramData(url) {
         return {
             thumbnail: 'https://via.placeholder.com/640x360?text=Instagram+Post',
             title: 'Instagram Postu/Videosu',
-            description: 'Instagram məzmunu.',
+            description: 'Instagram məzmunu. Dərin çıxarış tələb oluna bilər.',
             embedHtml: null,
             is_video: true,
         };
@@ -400,6 +465,7 @@ async function launchBrowserWithRetry(launchConfig) {
                 throw error;
             }
             const delay = initialDelay * Math.pow(2, i);
+            console.warn(`[Puppeteer]: Yenidən cəhd etmək üçün ${delay}ms gözlənilir.`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
@@ -426,7 +492,7 @@ async function extractDeepData(url, plan = 'basic') {
         }
     };
 
-    console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir.`);
+    console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir. Core + Sparticuz konfiqurasiyası.`);
 
     const proxy = getRandomProxy();
     let launchArgs = [
@@ -437,6 +503,7 @@ async function extractDeepData(url, plan = 'basic') {
     ];
 
     if (proxy) {
+        console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy}`);
         launchArgs.push(`--proxy-server=${proxy}`);
     }                                                                                                                                 
                                                                          
@@ -444,6 +511,8 @@ async function extractDeepData(url, plan = 'basic') {
 
     try {
         executablePath = await chromium.executablePath();
+        console.log("✅ Chromium path:", executablePath);
+
         if (!executablePath) {
             throw new Error("Chromium path boş qaytarıldı");
         }
@@ -477,8 +546,23 @@ async function extractDeepData(url, plan = 'basic') {
         });
 
         await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'az'] });
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en', 'az']
+            });
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+            Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
+                value: function () {
+                    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAACWCAYAAABap0dnAAABiklEQVR4Xu3WMQEAIAIEwHj/p0R9ZtDBGeLNAgAAAAAAAAB2X9f1AQAAAAAAAACAVw4AAAAAAAAAAMCtBgAAAAAAAAAAgFsNAAAAAA';
+                }
+            });
         });
         
         await page.setExtraHTTPHeaders({
@@ -488,29 +572,46 @@ async function extractDeepData(url, plan = 'basic') {
 
         await page.setUserAgent(USER_AGENT);
 
-        await page.goto(url, {
+        console.log(`[Puppeteer]: URL-ə keçid edilir: ${url}`);
+        
+        const responseObj = await page.goto(url, {
             waitUntil: 'domcontentloaded', 
             timeout: 60000 
         });
 
+        // 🟢 404 və ya digər xəta statuslarını birbaşa burada yaxalayırıq:
+        if (responseObj && responseObj.status() >= 400) {
+            result.thumbnail = 'https://via.placeholder.com/640x360?text=Page+Not+Found';
+            result.deepData.error = `SƏHİFƏ XƏTASI: HTTP Status ${responseObj.status()}`;
+            return result;
+        }
+        
+        console.log(`[Puppeteer]: URL-ə keçid uğurlu oldu.`);
+
+        // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        try {
-            await page.waitForSelector('meta[property="og:title"], h1, h2, title, body', { timeout: 10000 });
-        } catch (e) {
-            console.warn('[Puppeteer]: Əsas element 10 saniyə ərzində tapılmadı.');
-        }
-
-        const data = await page.evaluate((currentPlan, limits) => {
-            const output = {};
+        const data = await page.evaluate(async (plan, limits) => {
+            let output = {
+                ogImage: null,
+                ogTitle: null,
+                ogDesc: null,
+                pageTitle: null,
+                fallbackImage: null,
+                pageContent: null,
+                images: [],
+                links: [],
+                videoSources: [],
+                has_video_sources: false
+            };
 
             let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
             if (rawOgImage) {
                 try {
                     const parsed = new URL(rawOgImage, document.location.href);
-                    output.ogImage = parsed.origin + parsed.pathname;
+                    output.ogImage = (parsed.origin + parsed.pathname).replace(/\s+/g, '').trim();
                 } catch(e) {
-                    output.ogImage = rawOgImage;
+                    output.ogImage = rawOgImage ? rawOgImage.replace(/\s+/g, '').trim() : null;
                 }
             } else {
                 output.ogImage = null;
@@ -535,36 +636,26 @@ async function extractDeepData(url, plan = 'basic') {
                 output.fallbackImage = null;
             }
 
-            if (currentPlan === 'basic') {
+            if (plan === 'basic') {
                 return output;
             }
 
-            const contentLimit = limits.contentLimit[currentPlan] || limits.contentLimit.basic;
-            const paragraphLimit = limits.paragraphLimit[currentPlan];
-            const imageLimit = limits.imageLimit[currentPlan];
+            const contentLimit = limits.contentLimit[plan] || limits.contentLimit.basic;
+            const paragraphLimit = limits.paragraphLimit[plan];
+            const imageLimit = limits.imageLimit[plan];
 
-            // 1. Məzmun konteyneri
-            const contentContainer = document.querySelector('#mw-content-text') || document.querySelector('main') || document.body;
+            const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
             
-            // 2. Təmizləmə
             const clone = contentContainer.cloneNode(true);
             clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
 
-            // 3. Mətn oxuma (DÜZƏLDİLDİ ✅)
-            let lines = clone.innerText
+            const rawContent = clone.innerText
                 .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
+                .replace(/\s+/g, ' ')
+                .trim();
 
-            if (paragraphLimit) {
-                lines = lines.slice(0, paragraphLimit);
-            }
-
-            const rawContent = lines.join('\n\n');
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
-            // Şəkillər
             const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
                 .flatMap(el => {
                     const sources = [];
@@ -577,70 +668,28 @@ async function extractDeepData(url, plan = 'basic') {
                 })
                 .filter(src => src && !src.includes('data:image'))
                 .map(src => {
-                    try {
-                        const parsed = new URL(src, document.location.href);
-                        return parsed.origin + parsed.pathname;
-                    } catch(e) {
-                        return src;
-                    }
+                    const parsed = new URL(src, document.location.href);
+                    return parsed.origin + parsed.pathname;
                 })
                 .filter((value, index, self) => self.indexOf(value) === index);
 
-            if (imageLimit) {
-                output.images = images.slice(0, imageLimit);
-            } else {
-                output.images = images;
-            }
+            output.images = imageLimit ? images.slice(0, imageLimit) : images;
 
-            // Linklər və Video mənbələri (DÜZƏLDİLDİ ✅)
-            if (currentPlan === 'pro' || currentPlan === 'ultra' || currentPlan === 'mega') {
-                const unwantedPatterns = [
-                    'accounts.google.com',
-                    'support.google.com',
-                    'developers.google.com',
-                    'tv.youtube.com',
-                    'music.youtube.com',
-                    'youtubekids.com',
-                    'reporthistory',
-                    '/feed/',
-                    '/channel/',
-                    '/premium',
-                    '/about/',
-                    '/about/press/',
-                    '/about/copyright/',
-                    '/about/policies/',
-                    '/t/contact_us',
-                    '/creators/',
-                    '/ads/',
-                    '/t/terms',
-                    '/t/privacy',
-                    '/howyoutubeworks',
-                    '/new',
-                    'signin',
-                    'support'
-                ];
-
-                const allLinks = Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => {
-                        try {
-                            const parsed = new URL(a.href, document.location.href);
-                            return {
-                                text: a.innerText.trim().substring(0, 100) || parsed.hostname,
-                                href: parsed.href
-                            };
-                        } catch(e) {
-                            return null;
-                        }
-                    })
-                    .filter(Boolean)
+            if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
+                const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
+                    .map(a => ({
+                        text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
+                        href: new URL(a.href, document.location.href).href
+                    }))
                     .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
                     .filter(link => {
                         const href = link.href;
                         if (!href || !href.startsWith('http')) return false;
-                        return !unwantedPatterns.some(pattern => href.includes(pattern));
+                        if (href.includes('/wiki/')) return false;
+                        return true;
                     });
 
-                if (currentPlan === 'mega' || currentPlan === 'ultra') {
+                if (plan === 'mega' || plan === 'ultra') {
                     output.links = allLinks; 
                 } else {
                     output.links = allLinks.slice(0, 50); 
@@ -655,7 +704,7 @@ async function extractDeepData(url, plan = 'basic') {
             }
 
             return output;
-        }, plan, limits); 
+        }, plan, limits);
 
         result.thumbnail = data.ogImage || data.fallbackImage || 'https://via.placeholder.com/640x360?text=No+Thumbnail+Found';
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
@@ -670,6 +719,11 @@ async function extractDeepData(url, plan = 'basic') {
                 result.deepData.videoSources = data.videoSources || [];
                 result.deepData.has_video_sources = data.has_video_sources || false;
             }
+        }
+
+        // 🟢 BURA ƏLAVƏ OLUNMALIDIR:
+        if (!result.title || result.title === 'Başlıq tapılmadı' || result.thumbnail?.includes('No+Thumbnail+Found')) {
+            result.deepData.error = "Səhifə tapılmadı və ya məzmun etibarsızdır.";
         }
 
         return result;
@@ -693,7 +747,10 @@ async function extractDeepData(url, plan = 'basic') {
 // ----------------------------------------------------
 // 📌 API ENDPOINT: /extract
 // ----------------------------------------------------
+
+// 📌 API ENDPOINT: /extract
 app.post('/extract', async (req, res) => {
+    // Təmizlənmiş tək loglar
     console.log("--- YENİ SORĞU GƏLDİ ---");
     console.log("METHOD:", req.method);
     console.log("CONTENT-TYPE:", req.headers['content-type']);
@@ -701,38 +758,69 @@ app.post('/extract', async (req, res) => {
 
     const apiKeyCheck = checkApiKey(req);  
     if (!apiKeyCheck) {                     
-        return res.status(401).json({ error: "Invalid API key" });                    
+        console.log("API KEY BLOKLANDI");   
+        return res.status(401).json({      
+            error: "Invalid API key"       
+        });                    
     }
+    console.log("API KEY QƏBUL EDİLDİ");   
 
     const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link || req.body?.input?.url || req.body?.data?.url;
     
+    // 4. ƏN VACİB MƏQAM: URL boşdursa VƏ YA mövcud deyilsə, DƏRHAL 400 qaytarırıq (Puppeteer-ə BELƏ ÇATMIR)
     if (!url || typeof url !== 'string' || url.trim() === '') {
-        return res.status(400).json({ error: 'URL sahəsi boş ola bilməz və ya tələb olunur.' });
+        console.log("XƏTA: URL boşdur və ya təqdim olunmayıb.");
+        return res.status(400).json({
+            error: 'URL sahəsi boş ola bilməz və ya tələb olunur.'
+        });
     }
 
     let urlObj;
-    try {
-        urlObj = new URL(url);
-
-        if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
-            return res.status(400).json({
-                error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
-            });
-        }
-
-        if (isPrivateOrBlockedIP(urlObj.hostname)) {
-            return res.status(403).json({
-                error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
-                hostname: urlObj.hostname
-            });
-        }
-    } catch (e) {
-        return res.status(400).json({ error: `URL-i emal etmək mümkün olmadı: ${e.message}` });
+try {
+    if (!url || typeof url !== 'string') {
+        return res.status(400).json({ status: "error", message: "URL təqdim olunmayıb." });
     }
+
+    urlObj = new URL(url);
+
+    // 1. Protokol yoxlaması
+    if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
+        return res.status(400).json({
+            error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
+        });
+    }
+
+    // 2. Zədəli/təkrar protokol yoxlaması (Məsələn: https://azhttps://... olduqda hostname 'azhttps' olur)
+    if (
+        urlObj.hostname.includes('http') || 
+        urlObj.hostname.includes('://') || 
+        /^[a-zA-Z0-9-]+https?/i.test(urlObj.hostname)
+    ) {
+        return res.status(404).json({
+            status: "error",
+            message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
+        });
+    }
+
+    // 3. SSRF / Private IP yoxlaması
+    if (isPrivateOrBlockedIP(urlObj.hostname)) {
+        return res.status(403).json({
+            error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
+            hostname: urlObj.hostname
+        });
+    }
+
+} catch (e) {
+    return res.status(404).json({
+        status: "error",
+        message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
+    });
+}
     
     // GitHub Xüsusi Handling
     const githubData = await extractGitHubFileData(url);
     if (githubData) {
+        console.log("[API]: GitHub URL detected, returning GitHub data");
         return res.status(200).json({
             status: 'ok',
             plan_type: 'github',
@@ -747,19 +835,21 @@ app.post('/extract', async (req, res) => {
             }
         });
     }
-
     const rawPlanInput = req.body?.plan_type || req.body?.planType || req.body?.plan || req.query.plan_type || req.query.plan || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
     const rapidPlanHeader = String(rawPlanInput).toLowerCase();
     
-    let userPlan = 'basic';
+    let userPlan = 'basic'; // Default olaraq basic plan
+    
     if (rapidPlanHeader.includes('mega')) {
-        userPlan = 'mega';
+        userPlan = 'mega';    // Ən yüksək plan (Limitsiz)
     } else if (rapidPlanHeader.includes('ultra')) {
-        userPlan = 'ultra';
+        userPlan = 'ultra';   // 3-cü plan
     } else if (rapidPlanHeader.includes('pro')) {
-        userPlan = 'pro';
+        userPlan = 'pro';     // 2-ci plan
+    } else if (rapidPlanHeader.includes('basic')) {
+        userPlan = 'basic';   // 1-ci plan
     } else {
-        userPlan = 'basic';
+        userPlan = 'basic';   // Tanınmayan gələrsə default olaraq basic qəbul edirik
     }
     
     const requiredInternalPlan = userPlan;
@@ -776,6 +866,8 @@ app.post('/extract', async (req, res) => {
             retryAfter: rate.retryAfter
         });
     }
+    
+    console.log("🔑 RapidAPI Girişi:", user.email, "(Daxili Plan:", userPlan.toUpperCase() + ")");
 
     const requiredLevel = PLAN_ACCESS[requiredInternalPlan] ?? 0;
     const userLevel = PLAN_ACCESS[user.plan];
@@ -817,6 +909,8 @@ app.post('/extract', async (req, res) => {
 
         let deepResult = {};
         if (extractionPlan !== 'basic') {
+            console.log(`[API]: ${extractionPlan.toUpperCase()} planı üçün dərin çıxarma işə salınır...`);
+            
             deepResult = await extractDeepData(url, extractionPlan);
             data.deepData = deepResult.deepData || {};
 
@@ -836,25 +930,28 @@ app.post('/extract', async (req, res) => {
              };
         }
 
-        let responseStatus = 'ok';
-        if (data.deepData?.error?.includes("PUPPETEER LAUNCH CRITICAL ERROR")) {
-            responseStatus = 'critical_failed';
-        } else if (data.deepData?.error) {
-            responseStatus = 'partial_success'; 
-        } else if (!data.title || !data.thumbnail) {
-             responseStatus = 'partial_success'; 
+        // 🟢 BURA ƏLAVƏ OLUNMALIDIR: Əgər xəta varsa və ya səhifə məzmunu yoxdursa, birbaşa 404 qaytarırıq
+        if (data.deepData?.error || !data.title || data.title === 'Başlıq tapılmadı' || data.thumbnail?.includes('No+Thumbnail+Found') || data.thumbnail?.includes('Error+Loading+Page')) {
+            return res.status(404).json({
+                status: "error",
+                plan_type: user.plan,
+                message: data.deepData?.error || "Səhifə və ya məzmun tapılmadı (404)"
+            });
         }
 
-        return res.status(200).json({
-            status: responseStatus,
+        const responseBody = {
+            status: 'ok',
             plan_type: user.plan,
-            name: data.title || 'Başlıq tapılmadı',
-            description: data.description || 'Təsvir tapılmadı',
-            thumbnail_url: data.thumbnail || 'https://via.placeholder.com/640x360?text=Xəta',
+            name: data.title,
+            description: data.description,
+            thumbnail_url: data.thumbnail,
             embed_html: data.embedHtml || null,
             is_video: data.is_video,
             deep_data: data.deepData
-        });
+        };
+        
+        return res.status(200).json(responseBody);
+        
     } catch (error) {
         console.error('❌ Ümumi API Xətası:', error.message);
         return res.status(500).json({
@@ -866,11 +963,14 @@ app.post('/extract', async (req, res) => {
     }
 });
 
+// Admin panel marşrutu
 app.get('/admin-panel', (req, res) => {
     res.send("Admin Panelinə Xoş Gəlmisiniz. Bu hissə hələ hazırlanır.");
 });
 
+console.log("SERVER BAŞLAYIR...");
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`API işləyir: http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`API işləyir: http://0.0.0.0:${PORT}`);
 });
