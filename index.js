@@ -708,7 +708,7 @@ async function extractDeepData(url, plan = 'basic') {
 
             output.images = imageLimit ? images.slice(0, imageLimit) : images;
 
-            if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
+          if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
                 const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
                     .map(a => ({
                         text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
