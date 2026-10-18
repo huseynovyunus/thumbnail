@@ -182,6 +182,12 @@ const PLAN_ACCESS = {
 // ------------------------------------------------------------------
 // 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
 // ------------------------------------------------------------------
+
+function cleanText(text) {
+    if (!text || typeof text !== 'string') return text;
+    return text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) {
         global.rateLimits = {};
