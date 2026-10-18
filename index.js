@@ -969,6 +969,17 @@ try {
              };
         }
 
+        // 🟢 BÜTÜN PLANLAR VƏ MƏNBƏLƏR ÜÇÜN \n SİMVOLLARINI QƏTİ TƏMİZLƏYİRİK
+        data.title = cleanText(data.title);
+        data.description = cleanText(data.description);
+        
+        if (data.deepData) {
+            if (data.deepData.pageContent) {
+                data.deepData.pageContent = cleanText(data.deepData.pageContent);
+            }
+
+        } 
+
         // 🟢 BURA ƏLAVƏ OLUNMALIDIR: Əgər xəta varsa və ya səhifə məzmunu yoxdursa, birbaşa 404 qaytarırıq
         if (data.deepData?.error || !data.title || data.title === 'Başlıq tapılmadı' || data.thumbnail?.includes('No+Thumbnail+Found') || data.thumbnail?.includes('Error+Loading+Page')) {
             return res.status(404).json({
