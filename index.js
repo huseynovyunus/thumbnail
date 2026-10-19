@@ -686,7 +686,7 @@ async function extractDeepData(url, plan = 'basic') {
             const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
             
             const clone = contentContainer.cloneNode(true);
-            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu').forEach(el => el.remove());
+            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu, .reference, .mw-ref, sup').forEach(el => el.remove());
 
             const rawContent = clone.innerText
                 .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
