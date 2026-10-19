@@ -185,7 +185,13 @@ const PLAN_ACCESS = {
 
 function cleanText(text) {
     if (!text || typeof text !== 'string') return text;
-    return text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return text
+        .replace(/\[\d+\]/g, '') // [1], [2] kimi istinadları silir
+        .replace(/\[…\]/g, '')   // [...] simvollarını təmizləyir
+        .replace(/\[[a-z0-9]+\]/gi, '') // Hərfli istinadları silir
+        .replace(/[\r\n]+/g, ' ') 
+        .replace(/\s+/g, ' ') 
+        .trim();
 }
 
 async function checkRateLimit(userId, plan) {
