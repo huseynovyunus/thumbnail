@@ -690,15 +690,20 @@ async function extractDeepData(url, plan = 'basic') {
             const imageLimit = limits.imageLimit[plan];
 
             const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
+
+            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu, form, [role="region"], [role="dialog"], ul, ol, comment, .comments, .reference, .mw-ref, sup').forEach(el => el.remove());
             
             const clone = contentContainer.cloneNode(true);
-            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu, .reference, .mw-ref, sup').forEach(el => el.remove());
-
             const rawContent = clone.innerText
                 .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
                 .replace(/\s+/g, ' ')
                 .trim();
 
+            const commentIndex = rawContent.indexOf('Load more comments');
+            if (commentIndex !== -1) {
+                rawContent = rawContent.substring(0, commentIndex).trim();
+            }
+            
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
             const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
