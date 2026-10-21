@@ -1,4 +1,7 @@
-// Asılılıqları daxil edirik
+// ====================================================================
+// 🌐 ULTRA METADATA & DEEP SCRAPER API (Production Ready for GitHub & Render)
+// ====================================================================
+
 require('dotenv').config();
 
 const express = require('express');
@@ -11,20 +14,17 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 2. SIGORTA MIDDLEWARE: Əgər Content-Type undefined gələrsə, xam gövdəni özümüz oxuyub JSON-a çeviririk
+// Sığorta Middleware: Əgər Content-Type headersiz xam body gələrsə oxuyuruq
 app.use((req, res, next) => {
     if (!req.body || Object.keys(req.body).length === 0) {
         let data = '';
-        req.on('data', chunk => {
-            data += chunk;
-        });
+        req.on('data', chunk => { data += chunk; });
         req.on('end', () => {
             if (data) {
                 try {
                     req.body = JSON.parse(data);
-                    console.log("🛠️ [XAM BODY MANUAL OXUNDU]:", req.body);
                 } catch (e) {
-                    req.body = { url: data }; // Əgər sadə sətir kimi gəlibsə
+                    req.body = { url: data };
                 }
             }
             next();
@@ -34,615 +34,414 @@ app.use((req, res, next) => {
     }
 });
 
-function checkApiKey(req) {
-    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-    if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
-        console.log("✅ RapidAPI Proxy təsdiqləndi");
-        return { key: 'rapidapi-proxy' };
-    }
+// --------------------------------------------------------------------
+// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ
+// --------------------------------------------------------------------
 
-    // Əgər RapidAPI istifadəçisi kimi gəlibsə
-    const rapidApiUser = req.headers['x-rapidapi-user'];
-    if (rapidApiUser) {
-        console.log("✅ RapidAPI İstifadəçisi təsdiqləndi:", rapidApiUser);
-        return { key: rapidApiUser };
-    }
-
-    // Kənar sorğular üçün birbaşa Açar yoxlanılması
-    const rawHeader =
-        req.headers['x-api-key'] ||
-        req.headers['x-rapidapi-key'] ||
-        req.headers['authorization'] ||
-        null;
-
-    if (!rawHeader) {
-        console.log("❌ API KEY tapılmadı");
-        return null;
-    }
-
-    const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
-
-    if (process.env.RAPIDAPI_KEY && apiKey !== process.env.RAPIDAPI_KEY) {
-        console.log("❌ API KEY düzgün deyil");
-        return null;
-    }
-
-    console.log("✅ API KEY uğurla qəbul edildi");
-    return { key: apiKey };
-}
-
-// 🛡️ URL-in və ya Hostnamenin təhlükəsiz olub olmadığını yoxlayan funksiya
-function isPrivateOrBlockedIP(input) {
-    try {
-        let hostname = input;
-        
-        // Əgər tam URL daxil edilibsə, hostnameni ayırırıq
-        if (input && input.includes('://')) {
-            const parsedUrl = new URL(input);
-            hostname = parsedUrl.hostname;
-        }
-
-        if (!hostname) return true;
-
-        const lowerHostname = hostname.toLowerCase();
-
-        // 1. Dəqiq bloklanmış hostlar (localhost, 0.0.0.0 və s.)
-        if (BLOCKED_HOSTS_EXACT.includes(lowerHostname)) {
-            return true;
-        }
-
-        // 2. IP formatındadırsa, private diapazonları yoxlayırıq
-        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
-        if (isIp) {
-            const ipLong = ipToLong(hostname);
-            for (const range of PRIVATE_IP_RANGES) {
-                const startLong = ipToLong(range.start);
-                const endLong = ipToLong(range.end);
-                if (ipLong >= startLong && ipLong <= endLong) {
-                    return true; // Private IP-dir, blokla
-                }
-            }
-            return false; // Public IP-dir, icazə ver
-        }
-        
-        // 3. IPv6 localhost yoxlanışı
-        if (lowerHostname === '[::1]' || lowerHostname === '::1') {
-            return true;
-        }
-
-        // Public domenlər (youtube.com, github.com və s.) buradan false qayıdacaq və sorğu keçəcək
-        return false;
-    } catch (error) {
-        console.error("SSRF Check Error:", error.message);
-        return true; // Xəta baş verərsə təhlükəsizlik üçün blokla
-    }
-}
-
-// ------------------------------------------------------------------
-// KRİTİK FİKS #1: Stealth Plugin çıxarıldı. Stabil Launch əsas prioritetdir.
-// ------------------------------------------------------------------
-
-// 🌐 TƏHLÜKƏSİZLİK VƏ PERFORMANS KONFİGURASİYASI (Dəyişməz)
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
 const PRIVATE_IP_RANGES = [
-    { start: '127.0.0.0', end: '127.255.255.255' }, // Loopback[cite: 2]
-    { start: '10.0.0.0', end: '10.255.255.255' }, // Class A Private[cite: 2]
-    { start: '172.16.0.0', end: '172.31.255.255' }, // Class B Private[cite: 2]
-    { start: '192.168.0.0', end: '192.168.255.255' }, // Class C Private[cite: 2]
-    { start: '169.254.0.0', end: '169.254.255.255' }  // Link-local / Cloud Metadata (Yeni əlavə)
+    { start: '127.0.0.0', end: '127.255.255.255' },
+    { start: '10.0.0.0', end: '10.255.255.255' },
+    { start: '172.16.0.0', end: '172.31.255.255' },
+    { start: '192.168.0.0', end: '192.168.255.255' },
+    { start: '169.254.0.0', end: '169.254.255.255' } // AWS / Cloud metadata
 ];
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
-// 💵 Həm böyük, həm də kiçik hərfləri dəstəkləyən təhlükəsiz planlar obyekti
-const PRICING_PLANS = {
-    // Böyük hərf variantları
-    BASIC: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
-    PRO: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
-    ULTRA: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
-    MEGA: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 250 },
-
-    // Kiçik hərf variantları (Xətaları sıfırlamaq üçün)
-    basic: { name: 'Basic', internal: 'basic', accessLevel: 1, dailyLimit: 10, monthlyLimit: 100, price: 0 },
-    pro: { name: 'Pro', internal: 'pro', accessLevel: 2, dailyLimit: 400, monthlyLimit: 10000, price: 20 },
-    ultra: { name: 'Ultra', internal: 'ultra', accessLevel: 3, dailyLimit: 2000, monthlyLimit: 50000, price: 80 },
-    mega: { name: 'Mega', internal: 'mega', accessLevel: 4, dailyLimit: 10000, monthlyLimit: 300000, price: 250 }
-};
-
-// 📌 MƏLUMAT VƏ SİMVOL LİMİTLƏRİ
+// 🚀 PLAN LİMİTLƏRİ (Ultra və Mega üçün hər şey limitsizdir)
 const PLAN_CONTENT_LIMITS = {
     contentLimit: {
         basic: 500,
         pro: 5000,
-        ultra: null, // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
-        mega: null // 🚀 Mega planı üçün simvol limiti yoxdur (Limitsiz)
+        ultra: null, // Limitsiz tam məqalə
+        mega: null   // Limitsiz tam məqalə
     },
     paragraphLimit: {
-        basic: 10,
+        basic: 5,
         pro: 30,
-        ultra: null, // Limitsiz paraqraf
-        mega: null // Limitsiz paraqraf
+        ultra: null, // Bütün paraqraflar
+        mega: null   // Bütün paraqraflar
     },
     imageLimit: {
         basic: 3,
         pro: 30,
-        ultra: null, // Limitsiz şəkil
-        mega: null // Limitsiz şəkil
+        ultra: null, // Bütün şəkillər
+        mega: null   // Bütün şəkillər
+    },
+    linkLimit: {
+        basic: 0,
+        pro: 50,
+        ultra: null, // Bütün keçid linkləri
+        mega: null   // Bütün keçid linkləri
     }
 };
 
-const PLAN_ACCESS = {
-    basic: 1,
-    pro: 2,
-    ultra: 3,
-    mega: 4
-};
+const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
 
-// ------------------------------------------------------------------
-// 🛠️ KÖMƏKÇİ FUNTKİYALAR (Dəyişməz)
-// ------------------------------------------------------------------
+function ipToLong(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return 0;
+    return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
+}
+
+function isPrivateOrBlockedIP(input) {
+    try {
+        let hostname = input;
+        if (input && input.includes('://')) {
+            hostname = new URL(input).hostname;
+        }
+        if (!hostname) return true;
+
+        const lower = hostname.toLowerCase();
+        if (BLOCKED_HOSTS_EXACT.includes(lower)) return true;
+
+        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+        if (isIp) {
+            const ipLong = ipToLong(hostname);
+            for (const range of PRIVATE_IP_RANGES) {
+                if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        if (lower === '[::1]' || lower === '::1') return true;
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+function checkApiKey(req) {
+    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
+    if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
+        return { key: 'rapidapi-proxy' };
+    }
+    const rapidApiUser = req.headers['x-rapidapi-user'];
+    if (rapidApiUser) {
+        return { key: rapidApiUser };
+    }
+    const rawHeader = req.headers['x-api-key'] || req.headers['x-rapidapi-key'] || req.headers['authorization'] || null;
+    if (!rawHeader) return null;
+    const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
+    if (process.env.RAPIDAPI_KEY && apiKey !== process.env.RAPIDAPI_KEY) return null;
+    return { key: apiKey };
+}
+
+async function checkRateLimit(userId, plan) {
+    if (!global.rateLimits) global.rateLimits = {};
+    const key = userId || "guest";
+    const limits = { basic: 10, pro: 400, ultra: 2000, mega: 10000 };
+    const limit = limits[String(plan || "basic").toLowerCase()] || limits.basic;
+
+    if (!global.rateLimits[key]) {
+        global.rateLimits[key] = { count: 0, createdAt: Date.now() };
+    }
+    const data = global.rateLimits[key];
+    if (Date.now() - data.createdAt > 86400000) {
+        data.count = 0;
+        data.createdAt = Date.now();
+    }
+    data.count++;
+    if (data.count > limit) {
+        return { allowed: false, retryAfter: 86400 };
+    }
+    return { allowed: true, remaining: limit - data.count };
+}
 
 function cleanText(text) {
     if (!text || typeof text !== 'string') return text;
     return text
-        .replace(/\[\d+\]/g, '') // [1], [2] kimi istinadları silir
-        .replace(/\[…\]/g, '')   // [...] simvollarını təmizləyir
-        .replace(/\[[a-z0-9]+\]/gi, '') // Hərfli istinadları silir
-        .replace(/[\r\n]+/g, ' ') 
-        .replace(/\s+/g, ' ') 
+        .replace(/\[\d+\]/g, '')         // [1], [2] Vikipediya istinadlarını təmizləyir
+        .replace(/\[[a-zA-Z]\]/g, '')
+        .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
         .trim();
 }
 
-async function checkRateLimit(userId, plan) {
-    if (!global.rateLimits) {
-        global.rateLimits = {};
+// --------------------------------------------------------------------
+// 🎯 PLATFORMA MƏLUMAT ÇIXARIŞLARI
+// --------------------------------------------------------------------
+
+// 1. YouTube (Lazımsız şablon yazılardan təmizlənmiş versiya)
+async function extractYouTubeData(url) {
+    const videoIdMatch = url.match(/(?:v=|\/embed\/|youtu\.be\/|\/v\/|\/vi\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+    const videoId = videoIdMatch?.[1];
+    if (!videoId) return {};
+
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    try {
+        const response = await axios.get(oembedUrl, { timeout: 8000, headers: { 'User-Agent': USER_AGENT } });
+        const data = response.data;
+
+        return {
+            title: data.title || 'YouTube Videosu',
+            description: `${data.author_name} (@${(data.author_url || '').split('/@')[1] || data.author_name})`,
+            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            embedHtml: `<div class="aspect-w-16 aspect-h-9"><iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe></div>`,
+            is_video: true,
+            author_name: data.author_name,
+            author_url: data.author_url,
+            resolved_url: `https://www.youtube.com/watch?v=${videoId}`
+        };
+    } catch {
+        return {
+            title: 'YouTube Videosu',
+            description: 'YouTube video məzmunu',
+            thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+            embedHtml: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`,
+            is_video: true,
+            resolved_url: `https://www.youtube.com/watch?v=${videoId}`
+        };
+    }
+}
+
+// 2. TikTok (Qısa vm/vt linklərini açan və tam linki təqdim edən)
+async function extractTikTokData(url) {
+    let targetUrl = url;
+    if (targetUrl.includes('vm.tiktok.com') || targetUrl.includes('vt.tiktok.com') || targetUrl.includes('/t/')) {
+        try {
+            const redirect = await axios.get(targetUrl, {
+                maxRedirects: 10,
+                validateStatus: (s) => s >= 200 && s < 400,
+                headers: { 'User-Agent': USER_AGENT }
+            });
+            const final = redirect.request?.res?.responseUrl || redirect.headers?.location || targetUrl;
+            targetUrl = final.split('?')[0];
+        } catch (e) {
+            if (e.response?.headers?.location) {
+                targetUrl = e.response.headers.location.split('?')[0];
+            }
+        }
     }
 
-    const key = userId || "guest";
+    try {
+        const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(targetUrl)}`;
+        const res = await axios.get(oembedUrl, { timeout: 8000, headers: { 'User-Agent': USER_AGENT } });
+        const data = res.data;
 
-    // Son təyin olunan gündəlik limitlər
-    const limits = {
-        basic: 10,
-        pro: 400,
-        ultra: 2000,
-        mega: 10000
-    };
-
-    const normalizedPlan = String(plan || "basic").toLowerCase();
-    const limit = limits[normalizedPlan] || limits.basic;
-
-    if (!global.rateLimits[key]) {
-        global.rateLimits[key] = {
-            count: 0,
-            createdAt: Date.now()
-        };
-    }
-
-    const data = global.rateLimits[key];
-
-    // 24 saat keçibsə limiti sıfırla
-    if (Date.now() - data.createdAt > 86400000) {
-        data.count = 0;
-        data.createdAt = Date.now();
-    }
-
-    data.count++;
-
-    if (data.count > limit) {
-        return {
-            allowed: false,
-            retryAfter: 86400
-        };
-    }
-
-    return {
-        allowed: true,
-        remaining: limit - data.count
-    };
+        return {
+            title: data.title || 'TikTok Videosu',
+            description: data.author_name ? `@${data.author_unique_id || data.author_name}` : 'TikTok məzmunu',
+            thumbnail: data.thumbnail_url,
+            embedHtml: data.html || null,
+            is_video: true,
+            author_name: data.author_name,
+            resolved_url: targetUrl
+        };
+    } catch {
+        return {
+            title: 'TikTok Videosu',
+            description: 'TikTok məzmunu',
+            thumbnail: 'https://via.placeholder.com/640x360?text=TikTok+Media',
+            embedHtml: null,
+            is_video: true,
+            resolved_url: targetUrl
+        };
+    }
 }
 
-function ipToLong(ip) {
-    const parts = ip.split('.');
+// 3. Instagram (Həm brauzer, həm paylaşma linki ilə TAM məlumat çıxarışı)
+async function extractInstagramData(url) {
+    try {
+        // Hər cür linkdən (p, reel, reels, share/p və s.) shortcode çıxarırıq:
+        const match = url.match(/(?:p|reel|reels|tv|share\/(?:p|reel))\/([A-Za-z0-9_-]+)/);
+        const shortcode = match ? match[1] : null;
 
-    if (parts.length !== 4) return 0;
+        if (!shortcode) return null;
 
-    return parts.reduce(
-        (acc, part) => (acc * 256) + parseInt(part, 10),
-        0
-    );
+        const embedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned/`;
+        const res = await axios.get(embedUrl, {
+            timeout: 10000,
+            headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en;q=0.9,az;q=0.8' }
+        });
+        const html = res.data || '';
+
+        // Şəkil (High-Res Media)
+        let thumbnail = null;
+        const imgMatch = html.match(/class="EmbeddedMediaImage"[^>]*src="([^"]+)"/) || 
+                         html.match(/<img[^>]+class="[^"]*EmbeddedMedia[^"]*"[^>]+src="([^"]+)"/);
+        if (imgMatch && imgMatch[1]) {
+            thumbnail = imgMatch[1].replace(/&amp;/g, '&');
+        }
+
+        // Müəllif
+        let author = 'Instagram İstifadəçisi';
+        const authorMatch = html.match(/class="UsernameText">([^<]+)<\/span>/) ||
+                            html.match(/class="CaptionUsername"[^>]*>([^<]+)<\/a>/);
+        if (authorMatch && authorMatch[1]) {
+            author = authorMatch[1].trim();
+        }
+
+        // Tam Təsvir / Mətn (Caption)
+        let caption = '';
+        const captionMatch = html.match(/class="Caption"[^>]*>([\s\S]*?)<\/div>/);
+        if (captionMatch && captionMatch[1]) {
+            caption = captionMatch[1]
+                .replace(/<br\s*[\/]?>/gi, '\n')
+                .replace(/<[^>]+>/g, '')
+                .trim();
+        }
+
+        if (!caption) {
+            const metaDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/i);
+            if (metaDesc && metaDesc[1]) {
+                caption = metaDesc[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+            }
+        }
+
+        const isVideo = url.includes('/reel') || html.includes('EmbeddedMediaVideo');
+        const title = caption ? (caption.length > 80 ? caption.substring(0, 80) + '...' : caption) : `@${author} Instagram ${isVideo ? 'Reel' : 'Postu'}`;
+
+        return {
+            title: title,
+            description: caption || `@${author} tərəfindən Instagram paylaşımı`,
+            thumbnail: thumbnail || 'https://via.placeholder.com/640x360?text=Instagram+Media',
+            embedHtml: `<iframe src="https://www.instagram.com/p/${shortcode}/embed" width="400" height="480" frameborder="0" scrolling="no"></iframe>`,
+            is_video: isVideo,
+            author_name: author,
+            resolved_url: `https://www.instagram.com/p/${shortcode}/`,
+            deepData: {
+                author: author,
+                shortcode: shortcode,
+                pageContent: caption,
+                images: thumbnail ? [thumbnail] : [],
+                links: [], // İnstaqram login səhifəsindəki saxta 50 link təmizləndi!
+                videoSources: [],
+                has_video_sources: isVideo,
+                type: isVideo ? 'reel' : 'post'
+            }
+        };
+    } catch {
+        const match = url.match(/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+        const sc = match ? match[1] : '';
+        return {
+            title: 'Instagram Postu / Reel',
+            description: 'Instagram məzmunu',
+            thumbnail: 'https://via.placeholder.com/640x360?text=Instagram+Post',
+            embedHtml: sc ? `<iframe src="https://www.instagram.com/p/${sc}/embed" width="400" height="480" frameborder="0"></iframe>` : null,
+            is_video: url.includes('/reel'),
+            resolved_url: url
+        };
+    }
 }
 
-// Proksi əldə etmək üçün çatışmayan köməkçi funksiya
-function getRandomProxy() {
-    // Hələlik proksi siyahısı istifadə olunmadığı üçün sadəcə null qaytarır
-    return null;
-}
-
-// 🌐 SSRF-dən müdafiə: Yalnız daxili/private IP-ləri bloklayır, public IP-lərə icazə verir.
-function isPrivateIP(ip) {
-    const long = ipToLong(ip);
-    
-    // Loopback (127.0.0.1 / 8)
-    const loopbackStart = ipToLong('127.0.0.0');
-    const loopbackEnd = ipToLong('127.255.255.255');
-    
-    // Private Class A (10.0.0.0 / 8)
-    const classAStart = ipToLong('10.0.0.0');
-    const classAEnd = ipToLong('10.255.255.255');
-    
-    // Private Class B (172.16.0.0 / 12)
-    const classBStart = ipToLong('172.16.0.0');
-    const classBEnd = ipToLong('172.31.255.255');
-    
-    // Private Class C (192.168.0.0 / 16)
-    const classCStart = ipToLong('192.168.0.0');
-    const classCEnd = ipToLong('192.168.255.255');
-    
-    // Link-local / AWS Metadata (169.254.0.0 / 16)
-    const linkLocalStart = ipToLong('169.254.0.0');
-    const linkLocalEnd = ipToLong('169.254.255.255');
-
-    return (
-        (long >= loopbackStart && long <= loopbackEnd) ||
-        (long >= classAStart && long <= classAEnd) ||
-        (long >= classBStart && long <= classBEnd) ||
-        (long >= classCStart && long <= classCEnd) ||
-        (long >= linkLocalStart && long <= linkLocalEnd) ||
-        ip === '0.0.0.0'
-    );
-}
-
-// 🔧 GitHub File Data Extraction
+// 4. GitHub Raw File Handling
 async function extractGitHubFileData(url) {
     try {
         const u = new URL(url);
         if (!u.hostname.includes('github.com')) return null;
-
         const parts = u.pathname.split('/').filter(Boolean);
 
         if (parts.length >= 4 && ['blob', 'edit', 'tree'].includes(parts[2])) {
-            const owner = parts[0];
-            const repo = parts[1];
-            const branch = parts[3];
-            const filePath = parts.slice(4).join('/');
-
-            console.log(`[GitHub]: Owner: ${owner}, Repo: ${repo}, Branch: ${branch}, File: ${filePath}`);
-
+            const [owner, repo, , branch, ...filePaths] = parts;
+            const filePath = filePaths.join('/');
             const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
-            console.log(`[GitHub]: Raw URL: ${rawUrl}`);
 
-            const response = await axios.get(rawUrl, { timeout: 15000 });
-            const text = response.data || '';
-
+            const res = await axios.get(rawUrl, { timeout: 15000 });
+            const text = String(res.data || '');
             const fileName = filePath.split('/').pop() || 'file';
-            const preview = text.replace(/\s+/g, ' ').trim().slice(0, 500);
-
-            console.log(`[GitHub]: File extracted successfully - ${fileName}`);
 
             return {
                 title: `${owner}/${repo} - ${fileName}`,
-                description: preview || 'GitHub faylı məzmunu',
+                description: text.substring(0, 500).replace(/\s+/g, ' ').trim(),
                 thumbnail: 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png',
                 is_video: false,
                 embedHtml: null,
-                source: 'github'
-            };
-        }
-
-        return null;
-    } catch (error) {
-        console.error(`[GitHub]: Error extracting file: ${error.message}`);
-        return null;
-    }
-}
-
-// OEmbed funksiyaları
-async function extractOembedData(url) {
-    const oembedEndpoints = [
-        `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`,
-    ];
-    for (const endpoint of oembedEndpoints) {
-        try {
-            const response = await axios.get(endpoint, { timeout: 5000 });
-            const data = response.data;
-            if (data && (data.thumbnail_url || data.html)) {
-                return {
-                    thumbnail: data.thumbnail_url,
-                    title: data.title,
-                    description: data.description || 'OEmbed vasitəsilə çıxarılıb.',
-                    embedHtml: data.html,
-                    is_video: true,
-                };
-            }
-        } catch (error) { /* Ignore */ }
-    }
-    return null;
-}
-
-async function extractYouTubeData(url) {
-    const videoIdMatch = url.match(/(?:v=|\/embed\/|youtu\.be\/|\/v\/|\/vi\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
-    const videoId = videoIdMatch?.[1];
-    if (!videoId) {
-        console.log("[YouTube]: Video ID not found for URL:", url);
-        return {};
-    }
-
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    try {
-        const response = await axios.get(oembedUrl, { 
-            timeout: 8000,
-            headers: {
-                'User-Agent': USER_AGENT
-            }
-        });
-        const data = response.data;
-
-        // 🔍 Kanalın unikal @handle adını author_url-dən tapırıq
-        let channelIdentifier = data.author_name;
-        if (data.author_url && data.author_url.includes('/@')) {
-            const handleMatch = data.author_url.match(/\/(@[^\/?]+)/);
-            if (handleMatch) {
-                channelIdentifier = handleMatch[1]; // Məsələn: @JP.SIN.LIMITES
-            }
-        }
-
-        return {
-            thumbnail: data.thumbnail_url,
-            title: data.title,
-            description: `${channelIdentifier ? channelIdentifier.trim() : 'Müəllif'} tərəfindən. Kanal: ${data.provider_name}`,
-            embedHtml: `<div class="aspect-w-16 aspect-h-9">${data.html}</div>`,
-            is_video: true,
-        };
-    } catch (error) {
-        console.log("[YouTube]: OEmbed failed, using fallback for videoId:", videoId);
-        return {
-            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-            title: 'YouTube Video',
-            description: 'YouTube videonun əsas məlumatı',
-            embedHtml: `<div class="aspect-w-16 aspect-h-9"><iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`,
-            is_video: true,
-        };
-    }
-}
-
-async function extractTikTokData(url) {
-    if (!url) return null;
-
-    let targetUrl = url;
-
-    // 1. Əgər link qısa TikTok linkidirsə (vm/vt), əvvəlcə əsl (uzun) URL-ə çeviririk
-    if (targetUrl.includes('vm.tiktok.com') || targetUrl.includes('vt.tiktok.com')) {
-        try {
-            const redirectResponse = await axios.get(targetUrl, {
-                maxRedirects: 5,
-                validateStatus: (status) => status >= 200 && status < 400,
-                headers: { 
-                    'User-Agent': USER_AGENT 
+                resolved_url: url,
+                deepData: {
+                    plan: 'github',
+                    pageContent: text
                 }
-            });
-            targetUrl = redirectResponse.request.res.responseUrl || redirectResponse.config.url || targetUrl;
-            console.log(`[TikTok]: Qısa link uzun linkə çevrildi: ${targetUrl}`);
-        } catch (redirectError) {
-            console.warn(`[TikTok]: Qısa link çözülə bilmədi, orijinal istifadə olunur: ${redirectError.message}`);
-        }
-    }
-
-    // 2. Təmizlənmiş uzun URL ilə TikTok-un oEmbed endpoint-inə sorğu atırıq
-    const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(targetUrl)}`;
-    try {
-        const response = await axios.get(oembedUrl, { 
-            timeout: 8000,
-            headers: {
-                'User-Agent': USER_AGENT
-            }
-        });
-        const data = response.data;
-
-        return {
-            thumbnail: data.thumbnail_url,
-            title: data.title || 'TikTok Videosu',
-            description: data.author_name ? `${data.author_name} tərəfindən.` : 'TikTok məzmunu',
-            embedHtml: data.html || null,
-            is_video: true,
-            resolved_url: targetUrl // Tələb olunarsa açılmış uzun URL
-        };
-    } catch (error) {
-        console.error(`[TikTok]: OEmbed sorğusu uğursuz oldu: ${error.message}`);
-        
-        // 3. Əgər oEmbed uğursuz olarsa, mövcud fallback mexanizmini qoruyuruq
-        if (targetUrl.includes('tiktok.com')) {
-            return {
-                thumbnail: 'https://via.placeholder.com/640x360?text=TikTok+Content',
-                title: 'TikTok Məzmunu (OEmbed Xətası)',
-                description: 'TikTok məzmunu (API vasitəsilə çıxarılmadı).',
-                embedHtml: null,
-                is_video: true,
-                resolved_url: targetUrl
             };
         }
         return null;
-    }
-}
-
-async function extractInstagramData(url) {
-    if (url.includes('instagram.com')) {
-        return {
-            thumbnail: 'https://via.placeholder.com/640x360?text=Instagram+Post',
-            title: 'Instagram Postu/Videosu',
-            description: 'Instagram məzmunu. Dərin çıxarış tələb oluna bilər.',
-            embedHtml: null,
-            is_video: true,
-        };
-    }
-    return null;
-}
-
-async function extractDailyMotionData(url) {
-    const oembedUrl = `https://www.dailymotion.com/services/oembed?url=${encodeURIComponent(url)}`;
-    try {
-        const response = await axios.get(oembedUrl, { timeout: 5000 });
-        const data = response.data;
-        return {
-            thumbnail: data.thumbnail_url,
-            title: data.title || 'DailyMotion Videosu',
-            description: data.author_name ? `${data.author_name} tərəfindən.` : 'DailyMotion məzmunu',
-            embedHtml: data.html,
-            is_video: true,
-        };
-    } catch (error) {
+    } catch {
         return null;
     }
 }
 
-async function launchBrowserWithRetry(launchConfig) {
-    const MAX_RETRIES = 3;
-    const initialDelay = 1000;
-
-    for (let i = 0; i < MAX_RETRIES; i++) {
-        try {
-            const browser = await puppeteer.launch(launchConfig);
-            console.log(`[Puppeteer]: Browser uğurla işə salındı (Cəhd ${i + 1}).`);
-            return browser;
-        } catch (error) {
-            console.warn(`[Puppeteer]: Launch Xətası (Cəhd ${i + 1}/${MAX_RETRIES}): ${error.message}`);
-            if (i === MAX_RETRIES - 1) {
-                throw error;
-            }
-            const delay = initialDelay * Math.pow(2, i);
-            console.warn(`[Puppeteer]: Yenidən cəhd etmək üçün ${delay}ms gözlənilir.`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
-}
+// --------------------------------------------------------------------
+// 🌐 DƏRİN ÇIXARIŞ (Puppeteer / Chromium - Ümumi Saytlar və Vikipediya)
+// --------------------------------------------------------------------
 
 async function extractDeepData(url, plan = 'basic') {
     const limits = PLAN_CONTENT_LIMITS;
     let browser = null;
-    
     let result = {
         thumbnail: null,
         title: 'Başlıq tapılmadı',
         description: 'Təsvir tapılmadı',
-        embedHtml: null, 
+        embedHtml: null,
         deepData: {
             plan: plan,
-            error: null, 
+            error: null,
             pageContent: null,
             images: [],
             links: [],
             videoSources: [],
-            has_video_sources: false, 
-            stealth_mode_enabled: false 
+            has_video_sources: false
         }
     };
 
-    console.log(`[Puppeteer]: Plan '${plan}' üçün çıxarma işləyir. Core + Sparticuz konfiqurasiyası.`);
+    let executablePath = await chromium.executablePath();
+    if (!executablePath) {
+        result.deepData.error = "Chromium path tapılmadı";
+        return result;
+    }
 
-    const proxy = getRandomProxy();
-    let launchArgs = [
+    // Render 512MB RAM üçün zəruri bayraqlar
+    const launchArgs = [
+        ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gl-drawing-for-tests',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process'
     ];
 
-    if (proxy) {
-        console.log(`[Puppeteer]: 🔄 İstifadə olunan Proksi: ${proxy}`);
-        launchArgs.push(`--proxy-server=${proxy}`);
-    }                                                                                                                                 
-                                                                         
-    let executablePath = '';
-
     try {
-        executablePath = await chromium.executablePath();
-        console.log("✅ Chromium path:", executablePath);
+        browser = await puppeteer.launch({
+            args: launchArgs,
+            headless: chromium.headless,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: executablePath,
+            ignoreHTTPSErrors: true,
+            timeout: 120000
+        });
 
-        if (!executablePath) {
-            throw new Error("Chromium path boş qaytarıldı");
-        }
-    } catch (pathError) {
-        console.error("❌ Chromium PATH ERROR:", pathError);
-        result.deepData.error = `PUPPETEER LAUNCH PATH ERROR: ${pathError.message}`;
-        return result;
-    }                                                                
-
-    const launchConfig = {
-        args: launchArgs,
-        headless: true, 
-        defaultViewport: chromium.defaultViewport,
-        executablePath: executablePath, 
-        ignoreHTTPSErrors: true,
-        timeout: 120000,
-    };
-
-    try {
-        browser = await launchBrowserWithRetry(launchConfig);
         const page = await browser.newPage();
-
         await page.setRequestInterception(true);
         page.on('request', (req) => {
-            const resourceType = req.resourceType();
-            if (resourceType === 'image' || resourceType === 'font' || resourceType === 'media' || resourceType === 'stylesheet') {
+            const type = req.resourceType();
+            if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
                 req.abort();
             } else {
                 req.continue();
             }
         });
 
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en', 'az']
-            });
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-            Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
-                value: function () {
-                    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAACWCAYAAABap0dnAAABiklEQVR4Xu3WMQEAIAIEwHj/p0R9ZtDBGeLNAgAAAAAAAAB2X9f1AQAAAAAAAACAVw4AAAAAAAAAAMCtBgAAAAAAAAAAgFsNAAAAAA';
-                }
-            });
-        });
-        
-        await page.setExtraHTTPHeaders({
-            'Accept-Language': 'az-AZ, en-US,en;q=0.9,ru;q=0.8',
-            'Referer': url 
-        });
-
         await page.setUserAgent(USER_AGENT);
+        const responseObj = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        console.log(`[Puppeteer]: URL-ə keçid edilir: ${url}`);
-        
-        const responseObj = await page.goto(url, {
-            waitUntil: 'domcontentloaded', 
-            timeout: 60000 
-        });
-
-        // 🟢 404 və ya digər xəta statuslarını birbaşa burada yaxalayırıq:
         if (responseObj && responseObj.status() >= 400) {
-            result.thumbnail = 'https://via.placeholder.com/640x360?text=Page+Not+Found';
             result.deepData.error = `SƏHİFƏ XƏTASI: HTTP Status ${responseObj.status()}`;
             return result;
         }
-        
-        console.log(`[Puppeteer]: URL-ə keçid uğurlu oldu.`);
 
-        // ⏱️ Dinamik JS elementlərinin (menyuların) yüklənməsi üçün kiçik sabit gözləmə:
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(r => setTimeout(r, 1500));
 
-        const data = await page.evaluate(async (plan, limits) => {
-            let output = {
+        const data = await page.evaluate(async (currentPlan, limitsConfig) => {
+            const out = {
                 ogImage: null,
                 ogTitle: null,
                 ogDesc: null,
                 pageTitle: null,
-                fallbackImage: null,
                 pageContent: null,
                 images: [],
                 links: [],
@@ -650,388 +449,223 @@ async function extractDeepData(url, plan = 'basic') {
                 has_video_sources: false
             };
 
-            let rawOgImage = document.querySelector('meta[property="og:image"]')?.content;
-            if (rawOgImage) {
-                try {
-                    const parsed = new URL(rawOgImage, document.location.href);
-                    output.ogImage = (parsed.origin + parsed.pathname).replace(/\s+/g, '').trim();
-                } catch(e) {
-                    output.ogImage = rawOgImage ? rawOgImage.replace(/\s+/g, '').trim() : null;
-                }
-            } else {
-                output.ogImage = null;
+            // Metadata
+            const ogImg = document.querySelector('meta[property="og:image"]')?.content;
+            if (ogImg) {
+                try { out.ogImage = new URL(ogImg, document.location.href).href; } catch { out.ogImage = ogImg; }
             }
-            
-            output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
-            output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
-            output.pageTitle = document.title;
+            out.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
+            out.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content;
+            out.pageTitle = document.title;
 
-            const fallbackImageSrc = Array.from(document.querySelectorAll('img[src]'))
-                .map(img => img.src)
-                .find(src => src && !src.includes('data:image') && src.length > 5); 
+            // Plan limitləri
+            const contentLimit = limitsConfig.contentLimit[currentPlan];
+            const paragraphLimit = limitsConfig.paragraphLimit[currentPlan];
+            const imageLimit = limitsConfig.imageLimit[currentPlan];
+            const linkLimit = limitsConfig.linkLimit[currentPlan];
 
-            if (fallbackImageSrc) {
-                try {
-                    const parsed = new URL(fallbackImageSrc, document.location.href);
-                    output.fallbackImage = parsed.origin + parsed.pathname;
-                } catch(e) {
-                    output.fallbackImage = fallbackImageSrc;
-                }
-            } else {
-                output.fallbackImage = null;
-            }
+            // Əsas məzmun konteyneri (Vikipediya üçün #mw-content-text, digərləri üçün article/main/body)
+            const mainEl = document.querySelector('#mw-content-text') || 
+                           document.querySelector('article') || 
+                           document.querySelector('main') || 
+                           document.querySelector('[role="main"]') || 
+                           document.body;
 
-            if (plan === 'basic') {
-                return output;
-            }
+            const clone = mainEl.cloneNode(true);
+            // Sayt naviqasiyası, footer, skript və reklamları təmizləyirik
+            clone.querySelectorAll('script, style, nav, header, footer, noscript, .mw-editsection, .noprint, .navbox, .vertical-navbox, .catlinks, .printfooter, form, [role="region"], [role="dialog"]').forEach(e => e.remove());
 
-            const contentLimit = limits.contentLimit[plan] || limits.contentLimit.basic;
-            const paragraphLimit = limits.paragraphLimit[plan];
-            const imageLimit = limits.imageLimit[plan];
+            // Paraqrafları təmiz yığırıq
+            let pNodes = Array.from(clone.querySelectorAll('p, h1, h2, h3, h4, li'))
+                .map(p => p.innerText.replace(/[\u200E\u200F\u200B\uFEFF]/g, '').trim())
+                .filter(txt => txt.length > 20);
 
-            const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('#mw-content-text') || document.querySelector('[role="main"]') || document.body;
-            
-            // 1. Əvvəlcə clone yaradılır:
-            const clone = contentContainer.cloneNode(true);
-
-            // 2. Sonra isə lazım olmayan bütün elementlər (Instagram şərhləri, formlar, Vikipediya istinadları və s.) təmizlənir:
-            clone.querySelectorAll('script, style, nav, header, footer, .mw-editsection, .noprint, .vector-menu, form, [role="region"], [role="dialog"], ul, ol, comment, .comments, .reference, .mw-ref, sup').forEach(el => el.remove());
-            let rawContent = clone.innerText
-                .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-                .replace(/\s+/g, ' ')
-                .trim();
-
-            const commentIndex = rawContent.indexOf('Load more comments');
-            if (commentIndex !== -1) {
-                rawContent = rawContent.substring(0, commentIndex).trim();
+            if (pNodes.length === 0) {
+                pNodes = [clone.innerText.replace(/\s+/g, ' ').trim()];
             }
 
-            output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
+            if (paragraphLimit) {
+                pNodes = pNodes.slice(0, paragraphLimit);
+            }
 
-            const images = Array.from(document.querySelectorAll('img[src], img[srcset], source[src], source[srcset]'))
+            let fullText = pNodes.join('\n\n');
+            out.pageContent = contentLimit ? fullText.substring(0, contentLimit) : fullText;
+
+            // Şəkillər (Bütün şəkilləri çıxarırıq)
+            const imgElements = Array.from(document.querySelectorAll('img[src], img[srcset], source[srcset]'))
                 .flatMap(el => {
-                    const sources = [];
-                    if (el.src) sources.push(el.src);
+                    const list = [];
+                    if (el.src) list.push(el.src);
                     if (el.srcset) {
-                        const firstSrcsetMatch = el.srcset.match(/^\s*([^,\s]+)/); 
-                        if (firstSrcsetMatch) sources.push(firstSrcsetMatch[1]);
+                        const match = el.srcset.match(/^\s*([^,\s]+)/);
+                        if (match) list.push(match[1]);
                     }
-                    return sources;
+                    return list;
                 })
-                .filter(src => src && !src.includes('data:image'))
+                .filter(src => src && !src.startsWith('data:image'))
                 .map(src => {
-                    const parsed = new URL(src, document.location.href);
-                    return parsed.origin + parsed.pathname;
+                    try { return new URL(src, document.location.href).href; } catch { return src; }
                 })
-                .filter((value, index, self) => self.indexOf(value) === index);
+                .filter((v, i, self) => self.indexOf(v) === i);
 
-            output.images = imageLimit ? images.slice(0, imageLimit) : images;
+            out.images = imageLimit ? imgElements.slice(0, imageLimit) : imgElements;
 
-          if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
-                const allLinks = Array.from(contentContainer.querySelectorAll('a[href]'))
-                    .map(a => ({
-                        text: a.innerText.trim().substring(0, 100) || new URL(a.href, document.location.href).hostname,
-                        href: new URL(a.href, document.location.href).href
-                    }))
-                    .filter((value, index, self) => self.findIndex(item => item.href === value.href) === index)
-                    .filter(link => {
-                        const href = link.href;
-                        if (!href || !href.startsWith('http')) return false;
-                        if (href.includes('/wiki/')) return false;
-                        return true;
-                    });
-
-                if (plan === 'mega' || plan === 'ultra') {
-                    output.links = allLinks; 
-                } else {
-                    output.links = allLinks.slice(0, 50); 
-                }
-
-                output.videoSources = Array.from(document.querySelectorAll('video[src], audio[src], iframe[src], iframe[srcdoc]'))
-                    .map(el => el.src || el.getAttribute('srcdoc')) 
+            // Keçid linkləri
+            if (currentPlan !== 'basic') {
+                const links = Array.from(clone.querySelectorAll('a[href]'))
+                    .map(a => {
+                        try {
+                            const parsed = new URL(a.href, document.location.href);
+                            return { text: a.innerText.trim().substring(0, 100) || parsed.hostname, href: parsed.href };
+                        } catch { return null; }
+                    })
                     .filter(Boolean)
-                    .filter((value, index, self) => self.indexOf(value) === index);
-                
-                output.has_video_sources = output.videoSources.length > 0;
+                    .filter((v, i, self) => self.findIndex(item => item.href === v.href) === i)
+                    .filter(l => l.href.startsWith('http'));
+
+                out.links = linkLimit ? links.slice(0, linkLimit) : links;
             }
 
-            return output;
+            // Media / Video mənbələri
+            out.videoSources = Array.from(document.querySelectorAll('video[src], iframe[src]'))
+                .map(el => el.src)
+                .filter(Boolean)
+                .filter((v, i, self) => self.indexOf(v) === i);
+            out.has_video_sources = out.videoSources.length > 0;
+
+            return out;
         }, plan, limits);
 
-        result.thumbnail = data.ogImage || data.fallbackImage || 'https://via.placeholder.com/640x360?text=No+Thumbnail+Found';
+        result.thumbnail = data.ogImage || (data.images && data.images[0]) || 'https://via.placeholder.com/640x360?text=No+Thumbnail';
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
-        result.description = data.ogDesc || 'Təsvir tapılmadı';
+        result.description = data.ogDesc || (data.pageContent ? data.pageContent.substring(0, 200) + '...' : 'Təsvir tapılmadı');
 
-        if (plan !== 'basic') {
-            result.deepData.pageContent = data.pageContent;
-            result.deepData.images = data.images;
-
-            if (plan === 'pro' || plan === 'ultra' || plan === 'mega') {
-                result.deepData.links = data.links || [];
-                result.deepData.videoSources = data.videoSources || [];
-                result.deepData.has_video_sources = data.has_video_sources || false;
-            }
-        }
-
-        // 🟢 BURA ƏLAVƏ OLUNMALIDIR:
-        if (!result.title || result.title === 'Başlıq tapılmadı' || result.thumbnail?.includes('No+Thumbnail+Found')) {
-            result.deepData.error = "Səhifə tapılmadı və ya məzmun etibarsızdır.";
-        }
+        result.deepData.pageContent = data.pageContent;
+        result.deepData.images = data.images;
+        result.deepData.links = data.links;
+        result.deepData.videoSources = data.videoSources;
+        result.deepData.has_video_sources = data.has_video_sources;
 
         return result;
-
-    } catch (error) {
-        console.error(`❌ Puppeteer Xətası URL ${url}: ${error.message}`);
-        
-        result.thumbnail = 'https://via.placeholder.com/640x360?text=Error+Loading+Page';
-        result.title = result.title === 'Başlıq tapılmadı' ? 'Səhifə yüklənmədi (Timeout/Bot Blok)' : result.title;
-        result.deepData.error = (result.deepData.error ? result.deepData.error + ' | ' : '') + `SƏHİFƏ XƏTASI: ${error.message}`;
-
+    } catch (err) {
+        result.deepData.error = `SƏHİFƏ XƏTASI: ${err.message}`;
         return result;
     } finally {
-        if (browser) {
-            await browser.close();
-            console.log(`[Puppeteer]: Browser bağlandı.`);
-        }
+        if (browser) await browser.close();
     }
 }
 
-// ----------------------------------------------------
-// 📌 API ENDPOINT: /extract
-// ----------------------------------------------------
+// --------------------------------------------------------------------
+// 📌 ƏSAS API ENDPOINT: POST /extract
+// --------------------------------------------------------------------
 
-// 📌 API ENDPOINT: /extract
 app.post('/extract', async (req, res) => {
-    // Təmizlənmiş tək loglar
-    console.log("--- YENİ SORĞU GƏLDİ ---");
-    console.log("METHOD:", req.method);
-    console.log("CONTENT-TYPE:", req.headers['content-type']);
-    console.log("BODY:", req.body);
-
-    const apiKeyCheck = checkApiKey(req);  
-    if (!apiKeyCheck) {                     
-        console.log("API KEY BLOKLANDI");   
-        return res.status(401).json({      
-            error: "Invalid API key"       
-        });                    
+    const apiKeyCheck = checkApiKey(req);
+    if (!apiKeyCheck) {
+        return res.status(401).json({ error: "Invalid API key" });
     }
-    console.log("API KEY QƏBUL EDİLDİ");   
 
-    const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link || req.body?.input?.url || req.body?.data?.url;
-    
-    // 4. ƏN VACİB MƏQAM: URL boşdursa VƏ YA mövcud deyilsə, DƏRHAL 400 qaytarırıq (Puppeteer-ə BELƏ ÇATMIR)
+    const url = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link;
     if (!url || typeof url !== 'string' || url.trim() === '') {
-        console.log("XƏTA: URL boşdur və ya təqdim olunmayıb.");
-        return res.status(400).json({
-            error: 'URL sahəsi boş ola bilməz və ya tələb olunur.'
-        });
+        return res.status(400).json({ error: 'URL sahəsi boş ola bilməz və ya tələb olunur.' });
     }
 
     let urlObj;
-try {
-    if (!url || typeof url !== 'string') {
-        return res.status(400).json({ status: "error", message: "URL təqdim olunmayıb." });
+    try {
+        if (/(https?:\/\/){2,}/i.test(url)) {
+            return res.status(400).json({ status: "error", message: "Təkrarlanan protokol aşkarlandı" });
+        }
+        urlObj = new URL(url);
+        if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
+            return res.status(400).json({ error: 'Yalnız http və https protokolları dəstəklənir.' });
+        }
+        if (!urlObj.hostname.includes('.')) {
+            return res.status(400).json({ status: "error", message: "Domen adı düzgün deyil" });
+        }
+        if (isPrivateOrBlockedIP(urlObj.hostname)) {
+            return res.status(403).json({ error: 'Təhlükəsizlik Xətası (SSRF): Daxili IP-lər bloklanmışdır.' });
+        }
+    } catch (e) {
+        return res.status(400).json({ status: "error", message: "Yanlış URL formatı" });
     }
 
-    urlObj = new URL(url);
+    // 🚀 Planın Dəqiq Təyini
+    const rawPlan = req.body?.plan || req.body?.plan_type || req.query?.plan || req.query?.plan_type || 
+                    req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-plan'] || '';
+    const planStr = String(rawPlan).toLowerCase();
 
-    // 1. Protokol yoxlaması
-    if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
-        return res.status(400).json({
-            error: `Yanlış protokol. Yalnız ${ALLOWED_URL_SCHEMES.join(' və ')} dəstəklənir.`
-        });
-    }
+    let userPlan = 'basic';
+    if (planStr.includes('mega')) userPlan = 'mega';
+    else if (planStr.includes('ultra')) userPlan = 'ultra';
+    else if (planStr.includes('pro')) userPlan = 'pro';
 
-    // 2. Zədəli/təkrar protokol yoxlaması (Məsələn: https://azhttps://... olduqda hostname 'azhttps' olur)
-    if (
-        urlObj.hostname.includes('http') || 
-        urlObj.hostname.includes('://') || 
-        /^[a-zA-Z0-9-]+https?/i.test(urlObj.hostname)
-    ) {
-        return res.status(404).json({
-            status: "error",
-            message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
-        });
-    }
-
-    // 3. SSRF / Private IP yoxlaması
-    if (isPrivateOrBlockedIP(urlObj.hostname)) {
-        return res.status(403).json({
-            error: 'Təhlükəsizlik Xətası (SSRF): Daxili, private və lokal host IP-lər bloklanmışdır.',
-            hostname: urlObj.hostname
-        });
-    }
-
-} catch (e) {
-    return res.status(404).json({
-        status: "error",
-        message: "Səhifə və ya URL tapılmadı (Invalid URL format)"
-    });
-}
-    
-    // GitHub Xüsusi Handling
-    const githubData = await extractGitHubFileData(url);
-    if (githubData) {
-        console.log("[API]: GitHub URL detected, returning GitHub data");
-        return res.status(200).json({
-            status: 'ok',
-            plan_type: 'github',
-            name: githubData.title,
-            description: githubData.description,
-            thumbnail_url: githubData.thumbnail,
-            embed_html: githubData.embedHtml,
-            is_video: githubData.is_video,
-            deep_data: {
-                plan: 'github',
-                source: 'github_raw'
-            }
-        });
-    }
-    const rawPlanInput = req.body?.plan_type || req.body?.planType || req.body?.plan || req.query.plan_type || req.query.plan || req.headers['x-ratelimit-plan'] || req.headers['x-rapidapi-subscription'] || '';
-    const rapidPlanHeader = String(rawPlanInput).toLowerCase();
-    
-    let userPlan = 'basic'; // Default olaraq basic plan
-    
-    if (rapidPlanHeader.includes('mega')) {
-        userPlan = 'mega';    // Ən yüksək plan (Limitsiz)
-    } else if (rapidPlanHeader.includes('ultra')) {
-        userPlan = 'ultra';   // 3-cü plan
-    } else if (rapidPlanHeader.includes('pro')) {
-        userPlan = 'pro';     // 2-ci plan
-    } else if (rapidPlanHeader.includes('basic')) {
-        userPlan = 'basic';   // 1-ci plan
-    } else {
-        userPlan = 'basic';   // Tanınmayan gələrsə default olaraq basic qəbul edirik
-    }
-    
-    const requiredInternalPlan = userPlan;
-    const user = {
-        email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi',
-        plan: userPlan
-    };
-
+    const user = { email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi', plan: userPlan };
     const rate = await checkRateLimit(user.email, user.plan);
     if (!rate.allowed) {
-        return res.status(429).json({
-            status: "rate_limit_exceeded",
-            message: "Gündəlik limit bitib.",
-            retryAfter: rate.retryAfter
-        });
-    }
-    
-    console.log("🔑 RapidAPI Girişi:", user.email, "(Daxili Plan:", userPlan.toUpperCase() + ")");
-
-    const requiredLevel = PLAN_ACCESS[requiredInternalPlan] ?? 0;
-    const userLevel = PLAN_ACCESS[user.plan];
-    
-    if (requiredLevel > userLevel) {
-        const requiredPlanInfo = PRICING_PLANS[requiredInternalPlan.toUpperCase()]?.name || "Ödənişli Plan";
-        return res.status(403).json({
-            status: 'denied',
-            error: '🚫 Premium Xidmət Tələb Olunur',
-            message: `Bu dərinlikdə məlumat çıxarmaq üçün minimum RapidAPI ${requiredPlanInfo} planına abunə olmalısınız. Hazırkı daxili planınız: ${user.plan.toUpperCase()}.`
-        });
+        return res.status(429).json({ status: "rate_limit_exceeded", message: "Gündəlik limit bitib." });
     }
 
-    const isYouTubeUrl = url.includes('youtube.com') || url.includes('youtu.be');
-    const isInstagramUrl = url.includes('instagram.com');
+    // 1. GitHub
+    const githubData = await extractGitHubFileData(url);
+    if (githubData) {
+        return res.status(200).json({ status: 'ok', plan_type: user.plan, ...githubData });
+    }
+
+    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+    const isInstagram = url.includes('instagram.com');
+    const isTikTok = url.includes('tiktok.com');
 
     try {
-        let data = { deepData: null, is_video: false, embedHtml: null };
-        const extractionPlan = user.plan;
-        let oembedResult = {};
+        let result = {};
 
-        if (isYouTubeUrl) {
-            oembedResult = await extractYouTubeData(url);
-        } else if (isInstagramUrl) {
-            oembedResult = await extractInstagramData(url) || {};
-        } else if (url.includes('tiktok.com/')) {
-            oembedResult = await extractTikTokData(url) || {};
-        } else if (url.includes('dailymotion.com')) {
-            oembedResult = await extractDailyMotionData(url) || {};
+        if (isYouTube) {
+            result = await extractYouTubeData(url);
+        } else if (isInstagram) {
+            // Instagram birbaşa təmiz zəngin məlumat qaytarır (Login divarsız)
+            result = await extractInstagramData(url);
+        } else if (isTikTok) {
+            result = await extractTikTokData(url);
         } else {
-            oembedResult = await extractOembedData(url) || {};
+            // Vikipediya və digər bütün saytlar üçün Puppeteer işə düşür
+            result = await extractDeepData(url, user.plan);
         }
 
-        data.is_video = oembedResult.is_video || false;
-        data.embedHtml = oembedResult.embedHtml || null;
-        data.thumbnail = oembedResult.thumbnail || null;
-        data.title = oembedResult.title || null;
-        data.description = oembedResult.description || null;
-
-        let deepResult = {};
-        if (extractionPlan !== 'basic') {
-            console.log(`[API]: ${extractionPlan.toUpperCase()} planı üçün dərin çıxarma işə salınır...`);
-            
-            deepResult = await extractDeepData(url, extractionPlan);
-            data.deepData = deepResult.deepData || {};
-
-            if (!data.title) data.title = deepResult.title;
-            if (!data.description) data.description = deepResult.description;
-            if (!data.thumbnail) data.thumbnail = deepResult.thumbnail;
-            
-            if (data.deepData.has_video_sources) {
-                 data.is_video = true;
-            }
-        } else {
-             data.deepData = {
-                plan: extractionPlan,
-                status: 'limited', 
-                message: "Dərin məlumat çıxarışı Free Plan tərəfindən məhdudlaşdırılıb.",
-                stealth_mode_enabled: false 
-             };
+        // Təmizləmə
+        result.title = cleanText(result.title);
+        result.description = cleanText(result.description);
+        if (result.deepData?.pageContent) {
+            result.deepData.pageContent = cleanText(result.deepData.pageContent);
         }
 
-        // 🟢 BÜTÜN PLANLAR VƏ MƏNBƏLƏR ÜÇÜN \n SİMVOLLARINI QƏTİ TƏMİZLƏYİRİK
-        data.title = cleanText(data.title);
-        data.description = cleanText(data.description);
-        
-        if (data.deepData) {
-            if (data.deepData.pageContent) {
-                data.deepData.pageContent = cleanText(data.deepData.pageContent);
-            }
-
-        } 
-
-        // 🟢 BURA ƏLAVƏ OLUNMALIDIR: Əgər xəta varsa və ya səhifə məzmunu yoxdursa, birbaşa 404 qaytarırıq
-        if (data.deepData?.error || !data.title || data.title === 'Başlıq tapılmadı' || data.thumbnail?.includes('No+Thumbnail+Found') || data.thumbnail?.includes('Error+Loading+Page')) {
+        if (result.deepData?.error?.includes("HTTP Status 404") || (result.title === 'Başlıq tapılmadı' && !result.description)) {
             return res.status(404).json({
                 status: "error",
                 plan_type: user.plan,
-                message: data.deepData?.error || "Səhifə və ya məzmun tapılmadı (404)"
+                message: result.deepData?.error || "Səhifə və ya məzmun tapılmadı (404)"
             });
         }
 
-        const responseBody = {
+        return res.status(200).json({
             status: 'ok',
             plan_type: user.plan,
-            name: data.title,
-            description: data.description,
-            thumbnail_url: data.thumbnail,
-            embed_html: data.embedHtml || null,
-            is_video: data.is_video,
-            deep_data: data.deepData
-        };
-        
-        return res.status(200).json(responseBody);
-        
-    } catch (error) {
-        console.error('❌ Ümumi API Xətası:', error.message);
-        return res.status(500).json({
-            status: 'error',
-            plan_type: user.plan,
-            error: error.message,
-            message: 'API xətası'
+            name: result.title || 'Başlıq tapılmadı',
+            description: result.description || 'Təsvir tapılmadı',
+            thumbnail_url: result.thumbnail || 'https://via.placeholder.com/640x360?text=No+Thumbnail',
+            full_url: result.resolved_url || url,
+            embed_html: result.embedHtml || null,
+            is_video: result.is_video || false,
+            deep_data: result.deepData || null
         });
+
+    } catch (error) {
+        return res.status(500).json({ status: 'error', plan_type: user.plan, error: error.message });
     }
 });
 
-// Admin panel marşrutu
+// Admin Paneli
 app.get('/admin-panel', (req, res) => {
-    res.send("Admin Panelinə Xoş Gəlmisiniz. Bu hissə hələ hazırlanır.");
+    res.send("Admin Paneli: Sistem aktivdir.");
 });
-
-console.log("SERVER BAŞLAYIR...");
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
