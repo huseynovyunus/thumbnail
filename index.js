@@ -181,7 +181,8 @@ async function extractDeepData(url, plan = 'basic') {
             error: null, 
             pageContent: null,
             images: [],
-            links: []
+            links: [],
+            embeds: [] // Xəbər saytlarındakı video/iframe embedləri üçün
         }
     };
 
@@ -238,7 +239,8 @@ async function extractDeepData(url, plan = 'basic') {
                 fallbackImage: null,
                 pageContent: null,
                 images: [],
-                links: []
+                links: [],
+                embeds: []
             };
 
             output.ogImage = document.querySelector('meta[property="og:image"]')?.content || null;
@@ -267,6 +269,15 @@ async function extractDeepData(url, plan = 'basic') {
                 .filter(link => link.href && link.href.startsWith('http'))
                 .slice(0, 50);
 
+            // Xəbər saytlarında olan iframe / embed elementlərini toplayırıq
+            output.embeds = Array.from(contentContainer.querySelectorAll('iframe[src]'))
+                .map(iframe => ({
+                    src: iframe.src,
+                    html: iframe.outerHTML
+                }))
+                .filter(item => item.src && !item.src.includes('googlesyndication') && !item.src.includes('ads'))
+                .slice(0, 10);
+
             return output;
         }, plan, limits);
 
@@ -278,6 +289,7 @@ async function extractDeepData(url, plan = 'basic') {
             result.deepData.pageContent = data.pageContent;
             result.deepData.images = data.images;
             result.deepData.links = data.links || [];
+            result.deepData.embeds = data.embeds || [];
         }
 
         return result;
