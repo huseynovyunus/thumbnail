@@ -32,6 +32,11 @@ app.use((req, res, next) => {
     }
 });
 
+// 1. Sağlamlıq və Uptime yoxlanışı üçün /health endpoint-i (Ən üstdə olmalıdır)
+app.get('/health', (req, res) => {
+    return res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
 function checkApiKey(req) {
     const proxySecret = req.headers['x-rapidapi-proxy-secret'];
     if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
@@ -252,7 +257,6 @@ async function extractDeepData(url, plan = 'basic') {
             const videoElements = Array.from(document.querySelectorAll('iframe, video, embed'));
             output.embeds = videoElements.map(el => {
                 const src = el.src || el.getAttribute('data-src') || '';
-                // Reklam və ya sosial media widget xaric, video/iframe xarakterli linkləri süzürük
                 if (src && (src.includes('youtube') || src.includes('vimeo') || src.includes('dailymotion') || src.includes('player') || src.includes('embed') || el.tagName.toLowerCase() === 'video')) {
                     return {
                         type: el.tagName.toLowerCase(),
