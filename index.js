@@ -1,6 +1,6 @@
 // ====================================================================
-// 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API
-// (Render, GitHub & RapidAPI üçün tam hazır və stabil versiya)
+// 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
+// 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM YENİLƏNMİŞ VERSİYA
 // ====================================================================
 
 require('dotenv').config();
@@ -36,7 +36,7 @@ app.use((req, res, next) => {
 });
 
 // --------------------------------------------------------------------
-// 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST sorğularını qəbul edir)
+// 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST qəbul edir)
 // --------------------------------------------------------------------
 app.all(['/health', '/healrh'], (req, res) => {
     return res.status(200).json({
@@ -50,7 +50,6 @@ app.all(['/health', '/healrh'], (req, res) => {
 // --------------------------------------------------------------------
 // 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ
 // --------------------------------------------------------------------
-
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
 const PRIVATE_IP_RANGES = [
@@ -58,37 +57,16 @@ const PRIVATE_IP_RANGES = [
     { start: '10.0.0.0', end: '10.255.255.255' },
     { start: '172.16.0.0', end: '172.31.255.255' },
     { start: '192.168.0.0', end: '192.168.255.255' },
-    { start: '169.254.0.0', end: '169.254.255.255' } // AWS / Cloud metadata SSRF mühafizəsi
+    { start: '169.254.0.0', end: '169.254.255.255' }
 ];
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
-// 💎 PLAN LİMİTLƏRİ (Ultra və Mega üçün hər şey limitsizdir - null)
 const PLAN_CONTENT_LIMITS = {
-    contentLimit: {
-        basic: 500,
-        pro: 5000,
-        ultra: null, // Limitsiz məqalə mətni
-        mega: null   // Limitsiz məqalə mətni
-    },
-    paragraphLimit: {
-        basic: 5,
-        pro: 30,
-        ultra: null, // Bütün paraqraflar
-        mega: null   // Bütün paraqraflar
-    },
-    imageLimit: {
-        basic: 3,
-        pro: 30,
-        ultra: null, // Bütün şəkillər
-        mega: null   // Bütün şəkillər
-    },
-    linkLimit: {
-        basic: 0,
-        pro: 50,
-        ultra: null, // Bütün keçid linkləri
-        mega: null   // Bütün keçid linkləri
-    }
+    contentLimit: { basic: 500, pro: 5000, ultra: null, mega: null },
+    paragraphLimit: { basic: 5, pro: 30, ultra: null, mega: null },
+    imageLimit: { basic: 3, pro: 30, ultra: null, mega: null },
+    linkLimit: { basic: 0, pro: 50, ultra: null, mega: null }
 };
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
@@ -114,9 +92,7 @@ function isPrivateOrBlockedIP(input) {
         if (isIp) {
             const ipLong = ipToLong(hostname);
             for (const range of PRIVATE_IP_RANGES) {
-                if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) {
-                    return true;
-                }
+                if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) return true;
             }
             return false;
         }
@@ -134,9 +110,7 @@ function checkApiKey(req) {
         return { key: 'rapidapi-proxy' };
     }
     const rapidApiUser = req.headers['x-rapidapi-user'];
-    if (rapidApiUser) {
-        return { key: rapidApiUser };
-    }
+    if (rapidApiUser) return { key: rapidApiUser };
     const rawHeader = req.headers['x-api-key'] || req.headers['x-rapidapi-key'] || req.headers['authorization'] || null;
     if (!rawHeader) return null;
     const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
@@ -175,7 +149,7 @@ function cleanText(text) {
         .trim();
 }
 
-// ⚡ Qısa linkləri (pin.it, bit.ly, t.co və s.) dərhal əsl URL-ə çevirir (Gecikmənin qarşısını alır)
+// ⚡ Qısa linkləri (pin.it, bit.ly və s.) əsl URL-ə çevirir
 async function resolveShortUrl(targetUrl) {
     try {
         const u = new URL(targetUrl);
@@ -190,354 +164,432 @@ async function resolveShortUrl(targetUrl) {
             return redirect.request?.res?.responseUrl || redirect.headers?.location || targetUrl;
         }
     } catch {
-        // Xəta olarsa orijinal link qaytarılır
+        // xəta olarsa orijinal qalır
     }
     return targetUrl;
 }
 
-// 📰 İstənilən xəbər və məqalə saytı üçün hazır responsiv HTML Embed Kartı
+// 📰 Responsiv Məqalə Embed Kartı
 function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
-    const hasThumb = thumbnail && !thumbnail.includes('No+Thumbnail') && !thumbnail.includes('placeholder');
-    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
+    const hasThumb = thumbnail && !thumbnail.includes('placeholder') && !thumbnail.includes('No+Thumbnail');
+    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
 // --------------------------------------------------------------------
-// 🌐 MƏRKƏZİ UNIVERSAL MƏQALƏ VƏ SAYT ÇIXARIŞI (Puppeteer / Chromium)
+// 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
-async function extractDeepData(url, plan = 'basic') {
-    const limits = PLAN_CONTENT_LIMITS;
+async function scrapeUniversalWeb(targetUrl, plan = "basic") {
     let browser = null;
-    let result = {
-        thumbnail: null,
-        title: 'Başlıq tapılmadı',
-        description: 'Təsvir tapılmadı',
-        embedHtml: null,
-        siteName: null,
-        deepData: {
-            plan: plan,
-            error: null,
-            pageContent: null,
-            images: [],
-            links: [],
-            videoSources: [],
-            has_video_sources: false
-        }
-    };
-
-    let executablePath = await chromium.executablePath();
-    if (!executablePath) {
-        result.deepData.error = "Chromium path tapılmadı";
-        return result;
-    }
-
-    // Render 512MB RAM üçün zəruri bayraqlar
-    const launchArgs = [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process'
-    ];
-
     try {
         browser = await puppeteer.launch({
-            args: launchArgs,
+            args: [
+                ...chromium.args,
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process',
+                '--no-zygote'
+            ],
+            defaultViewport: { width: 1280, height: 800 },
+            executablePath: await chromium.executablePath(),
             headless: chromium.headless,
-            defaultViewport: chromium.defaultViewport,
-            executablePath: executablePath,
-            ignoreHTTPSErrors: true,
-            timeout: 120000
+            ignoreHTTPSErrors: true
         });
 
         const page = await browser.newPage();
-        
-        // RAM və şəbəkəyə qənaət üçün media və stilləri bloklayırıq
+        await page.setUserAgent(USER_AGENT);
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'az,tr,en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        });
+
+        // 🛡️ Render 512MB RAM mühafizəsi: Şəkil, şrift və CSS-ləri ləğv edirik, JS-i saxlayırıq!
         await page.setRequestInterception(true);
         page.on('request', (req) => {
-            const type = req.resourceType();
-            if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
+            const resource = req.resourceType();
+            if (['image', 'media', 'font', 'stylesheet'].includes(resource)) {
                 req.abort();
             } else {
                 req.continue();
             }
         });
 
-        await page.setUserAgent(USER_AGENT);
-        const responseObj = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 50000 });
+        await page.goto(targetUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 25000
+        });
 
-        if (responseObj && responseObj.status() >= 400) {
-            result.deepData.error = `SƏHİFƏ XƏTASI: HTTP Status ${responseObj.status()}`;
-            return result;
-        }
+        // ⏳ Mühüm: SPA və dinamik saytların <head>-i doldurması üçün 1 saniyə gözləyirik
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        await new Promise(r => setTimeout(r, 1200));
-
-        const data = await page.evaluate(async (currentPlan, limitsConfig) => {
+        // 🧠 BÜTÜN <HEAD>, META, OG, TWITTER VƏ MƏZMUNUN DƏRİN ÇIXARIŞI
+        const extracted = await page.evaluate((pageUrl) => {
             const out = {
-                ogImage: null,
-                ogTitle: null,
-                ogDesc: null,
-                pageTitle: null,
-                siteName: null,
-                pageContent: null,
-                images: [],
-                links: [],
-                videoSources: [],
-                has_video_sources: false
+                head: {
+                    title: '',
+                    description: '',
+                    site_name: '',
+                    canonical: '',
+                    favicon: '',
+                    author: '',
+                    keywords: '',
+                    language: document.documentElement.lang || '',
+                    charset: document.characterSet || 'UTF-8',
+                    open_graph: {},
+                    twitter: {},
+                    all_meta: {},
+                    json_ld: []
+                },
+                body: {
+                    h1: '',
+                    paragraphs: [],
+                    images: [],
+                    links: [],
+                    videoSources: []
+                }
             };
 
-            // Metadata oxunması
-            const ogImg = document.querySelector('meta[property="og:image"]')?.content ||
-                          document.querySelector('meta[name="twitter:image"]')?.content;
-            if (ogImg) {
-                try { out.ogImage = new URL(ogImg, document.location.href).href; } catch { out.ogImage = ogImg; }
-            }
-            
-            out.ogTitle = document.querySelector('meta[property="og:title"]')?.content ||
-                          document.querySelector('meta[name="twitter:title"]')?.content;
-            out.ogDesc = document.querySelector('meta[property="og:description"]')?.content || 
-                         document.querySelector('meta[name="description"]')?.content ||
-                         document.querySelector('meta[name="twitter:description"]')?.content;
-            out.pageTitle = document.title;
-            out.siteName = document.querySelector('meta[property="og:site_name"]')?.content || document.location.hostname;
-
-            const contentLimit = limitsConfig.contentLimit[currentPlan];
-            const paragraphLimit = limitsConfig.paragraphLimit[currentPlan];
-            const imageLimit = limitsConfig.imageLimit[currentPlan];
-            const linkLimit = limitsConfig.linkLimit[currentPlan];
-
-            // Əsas məzmun konteyneri (Universal semantik axtarış)
-            const mainEl = document.querySelector('article') || 
-                           document.querySelector('main') || 
-                           document.querySelector('[role="main"]') || 
-                           document.body;
-
-            const clone = mainEl.cloneNode(true);
-            
-            // Reklam, menyu, naviqasiya və dialoqları tam təmizləyirik
-            clone.querySelectorAll('script, style, nav, header, footer, noscript, form, [role="region"], [role="dialog"], aside').forEach(e => e.remove());
-
-            // Paraqrafların yığılması
-            let pNodes = Array.from(clone.querySelectorAll('p, h1, h2, h3, h4, li'))
-                .map(p => p.innerText.replace(/[\u200E\u200F\u200B\uFEFF]/g, '').trim())
-                .filter(txt => txt.length > 20);
-
-            if (pNodes.length === 0) {
-                pNodes = [clone.innerText.replace(/\s+/g, ' ').trim()];
+            // 1. <title> oxunması
+            const titleEl = document.querySelector('title');
+            if (titleEl && titleEl.innerText) {
+                out.head.title = titleEl.innerText.trim();
             }
 
-            if (paragraphLimit) {
-                pNodes = pNodes.slice(0, paragraphLimit);
+            // 2. BÜTÜN <head> və səhifədəki <meta> teqlərinin toplanması
+            document.querySelectorAll('meta').forEach(meta => {
+                const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
+                const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
+
+                if (!name || !content) return;
+
+                const lowerName = name.toLowerCase();
+                out.head.all_meta[name] = content;
+
+                // OpenGraph (og:title, og:description, og:image və s.)
+                if (lowerName.startsWith('og:')) {
+                    const key = lowerName.replace(/^og:/, '');
+                    out.head.open_graph[key] = content;
+                }
+
+                // Twitter Card (twitter:title, twitter:image və s.)
+                if (lowerName.startsWith('twitter:')) {
+                    const key = lowerName.replace(/^twitter:/, '');
+                    out.head.twitter[key] = content;
+                }
+
+                // Description
+                if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
+                    out.head.description = content;
+                }
+
+                // Site Name
+                if (['og:site_name', 'application-name', 'publisher'].includes(lowerName) && !out.head.site_name) {
+                    out.head.site_name = content;
+                }
+
+                // Author
+                if (['author', 'article:author', 'twitter:creator'].includes(lowerName) && !out.head.author) {
+                    out.head.author = content;
+                }
+
+                // Keywords
+                if (lowerName === 'keywords' && !out.head.keywords) {
+                    out.head.keywords = content;
+                }
+            });
+
+            // 3. Link teqləri (Canonical və Favicon)
+            const canonicalEl = document.querySelector('link[rel="canonical"]');
+            if (canonicalEl && canonicalEl.getAttribute('href')) {
+                out.head.canonical = canonicalEl.getAttribute('href');
+            } else if (out.head.open_graph.url) {
+                out.head.canonical = out.head.open_graph.url;
             }
 
-            let fullText = pNodes.join('\n\n');
-            
-            // Əgər mətnsiz səhifədirsə, təsviri mətn kimi istifadə edirik:
-            if (!fullText && out.ogDesc) {
-                fullText = out.ogDesc;
+            const iconEl = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+            if (iconEl && iconEl.getAttribute('href')) {
+                try {
+                    out.head.favicon = new URL(iconEl.getAttribute('href'), pageUrl).href;
+                } catch {
+                    out.head.favicon = iconEl.getAttribute('href');
+                }
+            } else {
+                try {
+                    const u = new URL(pageUrl);
+                    out.head.favicon = `${u.origin}/favicon.ico`;
+                } catch {}
             }
 
-            out.pageContent = contentLimit ? fullText.substring(0, contentLimit) : fullText;
-
-            // Şəkillərin tam çıxarışı
-            const imgElements = Array.from(document.querySelectorAll('img[src], img[srcset], source[srcset]'))
-                .flatMap(el => {
-                    const list = [];
-                    if (el.src) list.push(el.src);
-                    if (el.srcset) {
-                        const match = el.srcset.match(/^\s*([^,\s]+)/);
-                        if (match) list.push(match[1]);
+            // 4. Schema.org JSON-LD teqləri
+            document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
+                try {
+                    const raw = script.innerText.trim();
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        out.head.json_ld.push(parsed);
+                        // JSON-LD-dən əlavə ehtiyat başlıq və təsvir
+                        if (!out.head.title && parsed.headline) out.head.title = parsed.headline;
+                        if (!out.head.description && parsed.description) out.head.description = parsed.description;
                     }
-                    return list;
-                })
-                .filter(src => src && !src.startsWith('data:image'))
-                .map(src => {
-                    try { return new URL(src, document.location.href).href; } catch { return src; }
-                })
-                .filter((v, i, self) => self.indexOf(v) === i);
+                } catch {}
+            });
 
-            // Əsas ogImage-i mütləq şəkillər siyahısının əvvəlinə əlavə edirik:
-            if (out.ogImage && !imgElements.includes(out.ogImage)) {
-                imgElements.unshift(out.ogImage);
+            // 5. Başlıq (Title) alternativləri
+            if (!out.head.title) {
+                out.head.title = out.head.open_graph.title || out.head.twitter.title || '';
             }
 
-            out.images = imageLimit ? imgElements.slice(0, imageLimit) : imgElements;
+            // 6. Əsas H1 və Təsvir alternativləri
+            const h1El = document.querySelector('h1');
+            if (h1El) out.body.h1 = h1El.innerText.trim();
+            if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            // Keçid linkləri
-            if (currentPlan !== 'basic') {
-                const links = Array.from(clone.querySelectorAll('a[href]'))
-                    .map(a => {
-                        try {
-                            const parsed = new URL(a.href, document.location.href);
-                            return { text: a.innerText.trim().substring(0, 100) || parsed.hostname, href: parsed.href };
-                        } catch { return null; }
-                    })
-                    .filter(Boolean)
-                    .filter((v, i, self) => self.findIndex(item => item.href === v.href) === i)
-                    .filter(l => l.href.startsWith('http'));
+            // 7. Məqalə mətni və paraqraflar
+            const articleSelector = 'article, main, [role="main"], .post-content, .article-body, .entry-content, #content, .content';
+            const container = document.querySelector(articleSelector) || document.body;
 
-                out.links = linkLimit ? links.slice(0, linkLimit) : links;
+            const seenPara = new Set();
+            container.querySelectorAll('p').forEach(p => {
+                const txt = p.innerText.trim();
+                if (txt.length > 25 && !seenPara.has(txt)) {
+                    seenPara.add(txt);
+                    out.body.paragraphs.push(txt);
+                }
+            });
+
+            if (!out.head.description && out.body.paragraphs.length > 0) {
+                out.head.description = out.body.paragraphs[0];
             }
 
-            // 🚫 Reklam və analitika iframe-lərini qara siyahıya salırıq:
-            const unwantedIframes = [
-                'doubleclick', 'google', 'facebook', 'pinterest.com/ct', 'analytics', 
-                'clarity', 'adsystem', 'pagead', 'yandex', 'criteo', 'hotjar', 'stats'
-            ];
+            // 8. Əsas şəkillər (og:image ilk sıraya qoyulur)
+            const seenImages = new Set();
+            const ogImg = out.head.open_graph.image || out.head.twitter.image;
+            if (ogImg) {
+                try {
+                    const absoluteOg = new URL(ogImg, pageUrl).href;
+                    seenImages.add(absoluteOg);
+                    out.body.images.push(absoluteOg);
+                } catch {
+                    seenImages.add(ogImg);
+                    out.body.images.push(ogImg);
+                }
+            }
 
-            out.videoSources = Array.from(document.querySelectorAll('video[src], iframe[src]'))
-                .map(el => el.src)
-                .filter(Boolean)
-                .filter(src => !unwantedIframes.some(u => src.toLowerCase().includes(u)))
-                .filter((v, i, self) => self.indexOf(v) === i);
+            container.querySelectorAll('img').forEach(img => {
+                const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-original');
+                if (!src) return;
+                try {
+                    const abs = new URL(src, pageUrl).href;
+                    if (!abs.includes('tracker') && !abs.includes('pixel') && !abs.includes('.svg') && !seenImages.has(abs)) {
+                        seenImages.add(abs);
+                        out.body.images.push(abs);
+                    }
+                } catch {}
+            });
 
-            out.has_video_sources = out.videoSources.length > 0;
+            // 9. Keçid linkləri
+            const seenLinks = new Set();
+            container.querySelectorAll('a').forEach(a => {
+                const href = a.getAttribute('href');
+                const text = a.innerText.trim();
+                if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+                try {
+                    const abs = new URL(href, pageUrl).href;
+                    if (!seenLinks.has(abs)) {
+                        seenLinks.add(abs);
+                        out.body.links.push({ text: text || 'Keçid', url: abs });
+                    }
+                } catch {}
+            });
+
+            // 10. İfrem və video mənbələri (reklam və trekinqlər çıxarılır)
+            const unwantedIframes = ['ct.pinterest.com', 'google', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms'];
+            document.querySelectorAll('iframe').forEach(iframe => {
+                const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+                if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
+                    out.body.videoSources.push(src);
+                }
+            });
+
+            document.querySelectorAll('video, video source').forEach(v => {
+                const src = v.getAttribute('src');
+                if (src) out.body.videoSources.push(src);
+            });
 
             return out;
-        }, plan, limits);
+        }, targetUrl);
 
-        result.thumbnail = data.ogImage || (data.images && data.images[0]) || 'https://via.placeholder.com/640x360?text=No+Thumbnail';
-        result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
-        result.description = data.ogDesc || (data.pageContent ? data.pageContent.substring(0, 200) + '...' : 'Təsvir tapılmadı');
-        result.siteName = data.siteName;
+        await browser.close();
+        browser = null;
 
-        result.deepData.pageContent = data.pageContent;
-        result.deepData.images = data.images;
-        result.deepData.links = data.links;
-        result.deepData.videoSources = data.videoSources;
-        result.deepData.has_video_sources = data.has_video_sources;
+        // Plan limitlərinin tətbiqi
+        const limits = {
+            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5,
+            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 3,
+            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 0,
+            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 500
+        };
 
-        return result;
+        const finalParagraphs = limits.para === null ? extracted.body.paragraphs : extracted.body.paragraphs.slice(0, limits.para);
+        let fullText = extracted.body.paragraphs.join("\n\n");
+        if (limits.textLen !== null && fullText.length > limits.textLen) {
+            fullText = fullText.substring(0, limits.textLen) + "...";
+        }
+
+        const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
+        const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
+
+        const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
+        const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
+        const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
+        const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
+
+        // Embed HTML
+        const hasVideo = extracted.body.videoSources.length > 0;
+        let embedHtml = '';
+        if (hasVideo) {
+            embedHtml = `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;"><iframe src="${extracted.body.videoSources[0]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe></div>`;
+        } else {
+            embedHtml = generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
+        }
+
+        return {
+            success: true,
+            code: 200,
+            status: "ok",
+            plan_type: plan,
+            name: finalTitle,
+            description: finalDescription,
+            thumbnail_url: thumbnail,
+            favicon_url: extracted.head.favicon,
+            canonical_url: extracted.head.canonical || targetUrl,
+            author: extracted.head.author || null,
+            site_name: finalSiteName,
+            embed_html: embedHtml,
+            is_video: hasVideo,
+            // 🌟 BURADA BÜTÜN <HEAD> MƏLUMATLARI AYRICA VƏ DOLĞUN TƏQDİM OLUNUR:
+            head: {
+                title: finalTitle,
+                description: finalDescription,
+                site_name: finalSiteName,
+                canonical_url: extracted.head.canonical,
+                favicon: extracted.head.favicon,
+                author: extracted.head.author,
+                keywords: extracted.head.keywords,
+                language: extracted.head.language,
+                charset: extracted.head.charset,
+                open_graph: extracted.head.open_graph,
+                twitter: extracted.head.twitter,
+                json_ld: extracted.head.json_ld,
+                all_meta_tags: extracted.head.all_meta
+            },
+            deep_data: {
+                plan: plan,
+                error: null,
+                pageContent: cleanText(fullText),
+                paragraphs: finalParagraphs.map(cleanText),
+                images: finalImages,
+                links: finalLinks,
+                videoSources: extracted.body.videoSources,
+                has_video_sources: hasVideo
+            }
+        };
+
     } catch (err) {
-        result.deepData.error = `SƏHİFƏ XƏTASI: ${err.message}`;
-        return result;
-    } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            try { await browser.close(); } catch {}
+        }
+        throw err;
     }
 }
 
-// ----------------------------------------------------
-// 📌 ƏSAS API ENDPOINT: POST /extract
-// ----------------------------------------------------
-
-app.post('/extract', async (req, res) => {
+// --------------------------------------------------------------------
+// 🚀 ƏSAS API ENDPOINT (HƏM GET, HƏM DƏ POST DƏSTƏKLƏNİR)
+// --------------------------------------------------------------------
+app.all(['/', '/scrape', '/extract'], async (req, res) => {
     const startTime = Date.now();
 
-    const apiKeyCheck = checkApiKey(req);
-    if (!apiKeyCheck) {
-        return res.status(401).json({ success: false, code: 401, error: "Invalid API key" });
-    }
+    // 1. URL parametrini oxuyuruq
+    let targetUrl = req.body?.url || req.query?.url;
+    if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
 
-    const rawUrl = req.body?.url || req.query.url || req.body?.targetUrl || req.body?.target_url || req.body?.link;
-    if (!rawUrl || typeof rawUrl !== 'string' || rawUrl.trim() === '') {
-        return res.status(400).json({ success: false, code: 400, error: 'URL sahəsi boş ola bilməz və ya tələb olunur.' });
-    }
-
-    // ⚡ Qısa linkləri dərhal həll edirik
-    const url = await resolveShortUrl(rawUrl.trim());
-
-    let urlObj;
-    try {
-        if (/(https?:\/\/){2,}/i.test(url)) {
-            return res.status(400).json({ success: false, code: 400, message: "Təkrarlanan protokol aşkarlandı" });
-        }
-        urlObj = new URL(url);
-        if (!ALLOWED_URL_SCHEMES.includes(urlObj.protocol)) {
-            return res.status(400).json({ success: false, code: 400, error: 'Yalnız http və https protokolları dəstəklənir.' });
-        }
-        if (!urlObj.hostname.includes('.')) {
-            return res.status(400).json({ success: false, code: 400, message: "Domen adı düzgün deyil" });
-        }
-        if (isPrivateOrBlockedIP(urlObj.hostname)) {
-            return res.status(403).json({ success: false, code: 403, error: 'Təhlükəsizlik Xətası (SSRF): Daxili IP-lər bloklanmışdır.' });
-        }
-    } catch (e) {
-        return res.status(400).json({ success: false, code: 400, message: "Yanlış URL formatı" });
-    }
-
-    // 🚀 Planın Dəqiq Təyini
-    const rawPlan = req.body?.plan || req.body?.plan_type || req.query?.plan || req.query?.plan_type || 
-                    req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-plan'] || '';
-    const planStr = String(rawPlan).toLowerCase();
-
-    let userPlan = 'basic';
-    if (planStr.includes('mega')) userPlan = 'mega';
-    else if (planStr.includes('ultra')) userPlan = 'ultra';
-    else if (planStr.includes('pro')) userPlan = 'pro';
-
-    const user = { email: req.headers['x-rapidapi-user'] || 'Anonim İstifadəçi', plan: userPlan };
-    const rate = await checkRateLimit(user.email, user.plan);
-    if (!rate.allowed) {
-        return res.status(429).json({ success: false, code: 429, message: "Gündəlik limit bitib.", retryAfter: rate.retryAfter });
-    }
-
-    try {
-        const result = await extractDeepData(url, user.plan);
-
-        result.title = cleanText(result.title);
-        result.description = cleanText(result.description);
-        if (result.deepData?.pageContent) {
-            result.deepData.pageContent = cleanText(result.deepData.pageContent);
-        }
-
-        if (result.deepData?.error?.includes("HTTP Status 404") || (result.title === 'Başlıq tapılmadı' && !result.description)) {
-            return res.status(404).json({
-                success: false,
-                code: 404,
-                status: "error",
-                plan_type: user.plan,
-                message: result.deepData?.error || "Səhifə və ya məzmun tapılmadı (404)"
-            });
-        }
-
-        // 🌟 AKILLI EMBED: Əgər səhifədə video pleyer varsa videonun embedi, yoxdursa hazır Məqalə Embed Kartı verilir
-        let finalEmbedHtml = null;
-        if (result.deepData?.videoSources && result.deepData.videoSources.length > 0) {
-            finalEmbedHtml = `<iframe src="${result.deepData.videoSources[0]}" width="560" height="315" frameborder="0" allowfullscreen></iframe>`;
-        } else {
-            finalEmbedHtml = generateArticleEmbedHtml(result.title, result.description, result.thumbnail, url, result.siteName);
-        }
-
-        return res.status(200).json({
-            success: true,
-            code: 200,
-            status: 'ok',
-            plan_type: user.plan,
-            name: result.title || 'Başlıq tapılmadı',
-            description: result.description || 'Təsvir tapılmadı',
-            thumbnail_url: result.thumbnail || 'https://via.placeholder.com/640x360?text=No+Thumbnail',
-            full_url: url,
-            embed_html: finalEmbedHtml,
-            is_video: result.deepData?.has_video_sources || false,
-            deep_data: result.deepData || null,
-            meta: {
-                plan_type: user.plan,
-                quota_remaining: rate.remaining,
-                response_time_ms: Date.now() - startTime,
-                timestamp: new Date().toISOString()
-            }
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).json({
+            success: false,
+            code: 400,
+            status: "error",
+            error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
         });
+    }
 
-    } catch (error) {
+    targetUrl = targetUrl.trim();
+    if (!/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = 'https://' + targetUrl;
+    }
+
+    // Qısa linkləri (pin.it və s.) əsl ünvana çeviririk
+    targetUrl = await resolveShortUrl(targetUrl);
+
+    // SSRF və Təhlükəsizlik yoxlanışı
+    try {
+        const parsed = new URL(targetUrl);
+        if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
+            return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
+        }
+        if (isPrivateOrBlockedIP(parsed.hostname)) {
+            return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
+        }
+    } catch {
+        return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
+    }
+
+    // 2. Plan təyini
+    let plan = (req.body?.plan || req.query?.plan || "basic").toString().toLowerCase();
+    if (!PLAN_ACCESS[plan]) plan = "basic";
+
+    // 3. API Key və Rate Limit yoxlanışı
+    const apiKeyInfo = checkApiKey(req);
+    const rateLimit = await checkRateLimit(apiKeyInfo?.key || req.ip, plan);
+
+    if (!rateLimit.allowed) {
+        return res.status(429).json({
+            success: false,
+            code: 429,
+            status: "rate_limit_exceeded",
+            error: "Gündəlik sorğu limitiniz bitdi.",
+            retry_after_seconds: rateLimit.retryAfter
+        });
+    }
+
+    // 4. Məzmunun çıxarılması
+    try {
+        const result = await scrapeUniversalWeb(targetUrl, plan);
+
+        result.meta = {
+            plan_type: plan,
+            quota_remaining: rateLimit.remaining,
+            response_time_ms: Date.now() - startTime,
+            timestamp: new Date().toISOString()
+        };
+
+        return res.status(200).json(result);
+
+    } catch (err) {
         return res.status(500).json({
             success: false,
             code: 500,
-            status: 'error',
-            plan_type: user.plan,
-            error: error.message
+            status: "error",
+            error: "Səhifə oxunarkən xəta baş verdi: " + (err.message || "Bilinməyən xəta"),
+            response_time_ms: Date.now() - startTime
         });
     }
 });
 
-// Admin Paneli
-app.all('/admin-panel', (req, res) => {
-    res.send("Admin Paneli: Universal Xəbər, Məqalə və Veb Scraper aktivdir.");
-});
-
+// --------------------------------------------------------------------
+// 🚀 SERVERİ BAŞLAT
+// --------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`API uğurla başladı: http://0.0.0.0:${PORT}`);
+    console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
 });
