@@ -182,7 +182,7 @@ async function extractDeepData(url, plan = 'basic') {
             pageContent: null,
             images: [],
             links: [],
-            embeds: [] // Xəbər saytlarındakı video/iframe embedləri üçün
+            embeds: [] // Səhifədə tapılan video/iframe embedləri
         }
     };
 
@@ -211,7 +211,8 @@ async function extractDeepData(url, plan = 'basic') {
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const resourceType = req.resourceType();
-            if (['image', 'font', 'media', 'stylesheet'].includes(resourceType)) {
+            // Reklam və ya digər lazımsız resursları bloklayırıq, lakin media/iframelərə icazə veririk
+            if (['font', 'stylesheet'].includes(resourceType)) {
                 req.abort();
             } else {
                 req.continue();
@@ -236,7 +237,6 @@ async function extractDeepData(url, plan = 'basic') {
                 ogTitle: null,
                 ogDesc: null,
                 pageTitle: null,
-                fallbackImage: null,
                 pageContent: null,
                 images: [],
                 links: [],
@@ -247,6 +247,21 @@ async function extractDeepData(url, plan = 'basic') {
             output.ogTitle = document.querySelector('meta[property="og:title"]')?.content;
             output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
             output.pageTitle = document.title;
+
+            // İstənilən saytda video embed-lərini (iframe və ya video teqləri) toplayırıq
+            const videoElements = Array.from(document.querySelectorAll('iframe, video, embed'));
+            output.embeds = videoElements.map(el => {
+                const src = el.src || el.getAttribute('data-src') || '';
+                // Reklam və ya sosial media widget xaric, video/iframe xarakterli linkləri süzürük
+                if (src && (src.includes('youtube') || src.includes('vimeo') || src.includes('dailymotion') || src.includes('player') || src.includes('embed') || el.tagName.toLowerCase() === 'video')) {
+                    return {
+                        type: el.tagName.toLowerCase(),
+                        src: src,
+                        html: el.outerHTML
+                    };
+                }
+                return null;
+            }).filter(item => item !== null).slice(0, 5);
 
             if (plan === 'basic') return output;
 
@@ -269,15 +284,6 @@ async function extractDeepData(url, plan = 'basic') {
                 .filter(link => link.href && link.href.startsWith('http'))
                 .slice(0, 50);
 
-            // Xəbər saytlarında olan iframe / embed elementlərini toplayırıq
-            output.embeds = Array.from(contentContainer.querySelectorAll('iframe[src]'))
-                .map(iframe => ({
-                    src: iframe.src,
-                    html: iframe.outerHTML
-                }))
-                .filter(item => item.src && !item.src.includes('googlesyndication') && !item.src.includes('ads'))
-                .slice(0, 10);
-
             return output;
         }, plan, limits);
 
@@ -285,11 +291,12 @@ async function extractDeepData(url, plan = 'basic') {
         result.title = data.ogTitle || data.pageTitle || 'Başlıq tapılmadı';
         result.description = data.ogDesc || 'Təsvir tapılmadı';
 
+        result.deepData.embeds = data.embeds || [];
+
         if (plan !== 'basic') {
             result.deepData.pageContent = data.pageContent;
             result.deepData.images = data.images;
             result.deepData.links = data.links || [];
-            result.deepData.embeds = data.embeds || [];
         }
 
         return result;
