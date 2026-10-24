@@ -10,6 +10,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// 1. Sağlamlıq və Uptime yoxlanışı (Həm GET, həm də POST dəstəkləyir - Ən üstdədir ki, dərhal cavab versin)
+app.all('/health', (req, res) => {
+    return res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
 // Sığorta Middleware: Əgər Content-Type undefined gələrsə, xam gövdəni oxuyuruq
 app.use((req, res, next) => {
     if (!req.body || Object.keys(req.body).length === 0) {
@@ -30,11 +35,6 @@ app.use((req, res, next) => {
     } else {
         next();
     }
-});
-
-// Sağlamlıq və Uptime yoxlanışı üçün /health endpoint-i (Həm GET, həm POST dəstəkləyir)
-app.all('/health', (req, res) => {
-    return res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
 function checkApiKey(req) {
@@ -216,7 +216,6 @@ async function extractDeepData(url, plan = 'basic') {
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const resourceType = req.resourceType();
-            // Reklam və ya digər lazımsız resursları bloklayırıq, lakin media/iframelərə icazə veririk
             if (['font', 'stylesheet'].includes(resourceType)) {
                 req.abort();
             } else {
@@ -253,7 +252,7 @@ async function extractDeepData(url, plan = 'basic') {
             output.ogDesc = document.querySelector('meta[property="og:description"]')?.content || document.querySelector('meta[name="description"]')?.content || null;
             output.pageTitle = document.title;
 
-            // İstənilən saytda video embed-lərini (iframe və ya video teqləri) toplayırıq
+            // Video embed-lərini toplayırıq
             const videoElements = Array.from(document.querySelectorAll('iframe, video, embed'));
             output.embeds = videoElements.map(el => {
                 const src = el.src || el.getAttribute('data-src') || '';
@@ -270,12 +269,22 @@ async function extractDeepData(url, plan = 'basic') {
             if (plan === 'basic') return output;
 
             const contentLimit = limits.contentLimit[plan] || limits.contentLimit.basic;
-            const contentContainer = document.querySelector('article') || document.querySelector('main') || document.querySelector('[role="main"]') || document.body;
             
-            const clone = contentContainer.cloneNode(true);
-            clone.querySelectorAll('script, style, nav, header, footer, form, [role="region"], [role="dialog"], ul, ol, comment, .comments').forEach(el => el.remove());
+            // Xəbər mətninin yerləşdiyi real konteynerləri hədəfləyirik
+            const contentContainer = document.querySelector('.article-content') || document.querySelector('.news-content') || document.querySelector('.post-content') || document.querySelector('article') || document.querySelector('main') || document.body;
             
-            let rawContent = clone.innerText.replace(/\s+/g, ' ').trim();
+            let rawContent = '';
+            const paragraphs = contentContainer.querySelectorAll('p');
+            if (paragraphs.length > 0) {
+                // Yalnız paraqraf mətnlərini yığırıq (menyuları və reklamları kənarlaşdırır)
+                rawContent = Array.from(paragraphs).map(p => p.innerText.trim()).filter(Boolean).join(' ');
+            } else {
+                const clone = contentContainer.cloneNode(true);
+                clone.querySelectorAll('script, style, nav, header, footer, form, ul, ol, .comments').forEach(el => el.remove());
+                rawContent = clone.innerText;
+            }
+
+            rawContent = rawContent.replace(/\s+/g, ' ').trim();
             output.pageContent = contentLimit ? rawContent.substring(0, contentLimit) : rawContent;
 
             output.images = Array.from(document.querySelectorAll('img[src]'))
