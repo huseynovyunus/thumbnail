@@ -32,8 +32,8 @@ app.use((req, res, next) => {
     }
 });
 
-// 1. Sağlamlıq və Uptime yoxlanışı üçün /health endpoint-i (Ən üstdə olmalıdır)
-app.get('/health', (req, res) => {
+// Sağlamlıq və Uptime yoxlanışı üçün /health endpoint-i (Həm GET, həm POST dəstəkləyir)
+app.all('/health', (req, res) => {
     return res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
