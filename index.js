@@ -1,5 +1,6 @@
 // ====================================================================
-// 🌐 UNIVERSAL WEB ARTICLE & NEWS EXTRACTOR API (With Smart Embeds)
+// 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API
+// (Render, GitHub & RapidAPI üçün tam hazır və stabil versiya)
 // ====================================================================
 
 require('dotenv').config();
@@ -14,7 +15,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 🛡️ Sığorta Middleware
+// 🛡️ Sığorta Middleware: Content-Type başlıqsız xam body-ni oxuyur
 app.use((req, res, next) => {
     if (!req.body || Object.keys(req.body).length === 0) {
         let data = '';
@@ -35,6 +36,18 @@ app.use((req, res, next) => {
 });
 
 // --------------------------------------------------------------------
+// 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST sorğularını qəbul edir)
+// --------------------------------------------------------------------
+app.all(['/health', '/healrh'], (req, res) => {
+    return res.status(200).json({
+        status: "ok",
+        message: "Server aktivdir və problemsiz işləyir.",
+        uptime_seconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
+});
+
+// --------------------------------------------------------------------
 // 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ
 // --------------------------------------------------------------------
 
@@ -45,36 +58,36 @@ const PRIVATE_IP_RANGES = [
     { start: '10.0.0.0', end: '10.255.255.255' },
     { start: '172.16.0.0', end: '172.31.255.255' },
     { start: '192.168.0.0', end: '192.168.255.255' },
-    { start: '169.254.0.0', end: '169.254.255.255' }
+    { start: '169.254.0.0', end: '169.254.255.255' } // AWS / Cloud metadata SSRF mühafizəsi
 ];
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
-// 💎 PLAN LİMİTLƏRİ (Ultra və Mega üçün hər şey limitsizdir)
+// 💎 PLAN LİMİTLƏRİ (Ultra və Mega üçün hər şey limitsizdir - null)
 const PLAN_CONTENT_LIMITS = {
     contentLimit: {
         basic: 500,
         pro: 5000,
-        ultra: null,
-        mega: null
+        ultra: null, // Limitsiz məqalə mətni
+        mega: null   // Limitsiz məqalə mətni
     },
     paragraphLimit: {
         basic: 5,
         pro: 30,
-        ultra: null,
-        mega: null
+        ultra: null, // Bütün paraqraflar
+        mega: null   // Bütün paraqraflar
     },
     imageLimit: {
         basic: 3,
         pro: 30,
-        ultra: null,
-        mega: null
+        ultra: null, // Bütün şəkillər
+        mega: null   // Bütün şəkillər
     },
     linkLimit: {
         basic: 0,
         pro: 50,
-        ultra: null,
-        mega: null
+        ultra: null, // Bütün keçid linkləri
+        mega: null   // Bütün keçid linkləri
     }
 };
 
@@ -162,7 +175,7 @@ function cleanText(text) {
         .trim();
 }
 
-// ⚡ Qısa linkləri (pin.it, bit.ly, t.co və s.) dərhal əsl URL-ə çevirən funksiya (Gecikməni aradan qaldırır)
+// ⚡ Qısa linkləri (pin.it, bit.ly, t.co və s.) dərhal əsl URL-ə çevirir (Gecikmənin qarşısını alır)
 async function resolveShortUrl(targetUrl) {
     try {
         const u = new URL(targetUrl);
@@ -182,51 +195,14 @@ async function resolveShortUrl(targetUrl) {
     return targetUrl;
 }
 
-// 📰 Xəbər və Məqalə saytları üçün hazır, responsiv HTML Embed Kartı generasiya edən funksiya
+// 📰 İstənilən xəbər və məqalə saytı üçün hazır responsiv HTML Embed Kartı
 function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
     const hasThumb = thumbnail && !thumbnail.includes('No+Thumbnail') && !thumbnail.includes('placeholder');
-    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Xəbər / Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
+    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
 // --------------------------------------------------------------------
-// 💻 GITHUB Raw fayl çıxarışı
-// --------------------------------------------------------------------
-async function extractGitHubFileData(url) {
-    try {
-        const u = new URL(url);
-        if (!u.hostname.includes('github.com')) return null;
-        const parts = u.pathname.split('/').filter(Boolean);
-
-        if (parts.length >= 4 && ['blob', 'edit', 'tree'].includes(parts[2])) {
-            const [owner, repo, , branch, ...filePaths] = parts;
-            const filePath = filePaths.join('/');
-            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
-
-            const res = await axios.get(rawUrl, { timeout: 15000 });
-            const text = String(res.data || '');
-            const fileName = filePath.split('/').pop() || 'file';
-
-            return {
-                title: `${owner}/${repo} - ${fileName}`,
-                description: text.substring(0, 500).replace(/\s+/g, ' ').trim(),
-                thumbnail: 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png',
-                is_video: false,
-                embed_html: `<pre><code>${text.substring(0, 300)}...</code></pre>`,
-                resolved_url: url,
-                deepData: {
-                    plan: 'github',
-                    pageContent: text
-                }
-            };
-        }
-        return null;
-    } catch {
-        return null;
-    }
-}
-
-// --------------------------------------------------------------------
-// 🌐 DƏRİN MƏQALƏ, XƏBƏR VƏ SAYT ÇIXARIŞI (Puppeteer / Chromium)
+// 🌐 MƏRKƏZİ UNIVERSAL MƏQALƏ VƏ SAYT ÇIXARIŞI (Puppeteer / Chromium)
 // --------------------------------------------------------------------
 async function extractDeepData(url, plan = 'basic') {
     const limits = PLAN_CONTENT_LIMITS;
@@ -254,6 +230,7 @@ async function extractDeepData(url, plan = 'basic') {
         return result;
     }
 
+    // Render 512MB RAM üçün zəruri bayraqlar
     const launchArgs = [
         ...chromium.args,
         '--no-sandbox',
@@ -277,6 +254,7 @@ async function extractDeepData(url, plan = 'basic') {
 
         const page = await browser.newPage();
         
+        // RAM və şəbəkəyə qənaət üçün media və stilləri bloklayırıq
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const type = req.resourceType();
@@ -331,19 +309,18 @@ async function extractDeepData(url, plan = 'basic') {
             const imageLimit = limitsConfig.imageLimit[currentPlan];
             const linkLimit = limitsConfig.linkLimit[currentPlan];
 
-            // Əsas məzmun konteyneri
-            const mainEl = document.querySelector('#mw-content-text') || 
-                           document.querySelector('article') || 
+            // Əsas məzmun konteyneri (Universal semantik axtarış)
+            const mainEl = document.querySelector('article') || 
                            document.querySelector('main') || 
                            document.querySelector('[role="main"]') || 
                            document.body;
 
             const clone = mainEl.cloneNode(true);
             
-            // Reklam, menyu və lazımsız elementləri təmizləyirik
-            clone.querySelectorAll('script, style, nav, header, footer, noscript, .mw-editsection, .noprint, .navbox, .vertical-navbox, .catlinks, .printfooter, form, [role="region"], [role="dialog"]').forEach(e => e.remove());
+            // Reklam, menyu, naviqasiya və dialoqları tam təmizləyirik
+            clone.querySelectorAll('script, style, nav, header, footer, noscript, form, [role="region"], [role="dialog"], aside').forEach(e => e.remove());
 
-            // Paraqrafları yığırıq
+            // Paraqrafların yığılması
             let pNodes = Array.from(clone.querySelectorAll('p, h1, h2, h3, h4, li'))
                 .map(p => p.innerText.replace(/[\u200E\u200F\u200B\uFEFF]/g, '').trim())
                 .filter(txt => txt.length > 20);
@@ -358,7 +335,7 @@ async function extractDeepData(url, plan = 'basic') {
 
             let fullText = pNodes.join('\n\n');
             
-            // Əgər mətnsiz səhifədirsə (məsələn, Pinterest kimi), təsviri mətn kimi istifadə edirik:
+            // Əgər mətnsiz səhifədirsə, təsviri mətn kimi istifadə edirik:
             if (!fullText && out.ogDesc) {
                 fullText = out.ogDesc;
             }
@@ -382,7 +359,7 @@ async function extractDeepData(url, plan = 'basic') {
                 })
                 .filter((v, i, self) => self.indexOf(v) === i);
 
-            // Əgər səhifədə əlavə şəkil tapılmadısa, əsas ogImage-i mütləq daxil edirik:
+            // Əsas ogImage-i mütləq şəkillər siyahısının əvvəlinə əlavə edirik:
             if (out.ogImage && !imgElements.includes(out.ogImage)) {
                 imgElements.unshift(out.ogImage);
             }
@@ -405,7 +382,7 @@ async function extractDeepData(url, plan = 'basic') {
                 out.links = linkLimit ? links.slice(0, linkLimit) : links;
             }
 
-            // 🚫 Saxta analitika və reklam iframe-lərini qara siyahıya salırıq:
+            // 🚫 Reklam və analitika iframe-lərini qara siyahıya salırıq:
             const unwantedIframes = [
                 'doubleclick', 'google', 'facebook', 'pinterest.com/ct', 'analytics', 
                 'clarity', 'adsystem', 'pagead', 'yandex', 'criteo', 'hotjar', 'stats'
@@ -459,7 +436,7 @@ app.post('/extract', async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: 'URL sahəsi boş ola bilməz və ya tələb olunur.' });
     }
 
-    // ⚡ Qısa linkləri (pin.it və s.) dərhal əsl linkə çeviririk ki, vaxt itkisi olmasın
+    // ⚡ Qısa linkləri dərhal həll edirik
     const url = await resolveShortUrl(rawUrl.trim());
 
     let urlObj;
@@ -497,25 +474,6 @@ app.post('/extract', async (req, res) => {
         return res.status(429).json({ success: false, code: 429, message: "Gündəlik limit bitib.", retryAfter: rate.retryAfter });
     }
 
-    // 1. GitHub
-    const githubData = await extractGitHubFileData(url);
-    if (githubData) {
-        return res.status(200).json({
-            success: true,
-            code: 200,
-            status: 'ok',
-            plan_type: user.plan,
-            ...githubData,
-            meta: {
-                plan_type: user.plan,
-                quota_remaining: rate.remaining,
-                response_time_ms: Date.now() - startTime,
-                timestamp: new Date().toISOString()
-            }
-        });
-    }
-
-    // 2. Mərkəzi Xəbər, Məqalə və Sayt Çıxarışı
     try {
         const result = await extractDeepData(url, user.plan);
 
@@ -535,7 +493,7 @@ app.post('/extract', async (req, res) => {
             });
         }
 
-        // 🌟 AKILLI EMBED: Əgər məqalədə video pleyer varsa videonun embedi, yoxdursa hazır Xəbər/Məqalə Embed Kartı verilir!
+        // 🌟 AKILLI EMBED: Əgər səhifədə video pleyer varsa videonun embedi, yoxdursa hazır Məqalə Embed Kartı verilir
         let finalEmbedHtml = null;
         if (result.deepData?.videoSources && result.deepData.videoSources.length > 0) {
             finalEmbedHtml = `<iframe src="${result.deepData.videoSources[0]}" width="560" height="315" frameborder="0" allowfullscreen></iframe>`;
@@ -552,7 +510,7 @@ app.post('/extract', async (req, res) => {
             description: result.description || 'Təsvir tapılmadı',
             thumbnail_url: result.thumbnail || 'https://via.placeholder.com/640x360?text=No+Thumbnail',
             full_url: url,
-            embed_html: finalEmbedHtml, // 👈 İSTƏDİYİNİZ HAZIR İŞLƏK EMBED KODU
+            embed_html: finalEmbedHtml,
             is_video: result.deepData?.has_video_sources || false,
             deep_data: result.deepData || null,
             meta: {
@@ -575,7 +533,7 @@ app.post('/extract', async (req, res) => {
 });
 
 // Admin Paneli
-app.get('/admin-panel', (req, res) => {
+app.all('/admin-panel', (req, res) => {
     res.send("Admin Paneli: Universal Xəbər, Məqalə və Veb Scraper aktivdir.");
 });
 
