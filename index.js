@@ -327,13 +327,12 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             if (h1El) out.body.h1 = h1El.innerText.trim();
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            // 7. Məqalə mətni və paraqraflar (Sərt filtrləmə ilə)
+            // 7. Məqalə mətni və paraqraflar (GÜCLƏNDİRİLMİŞ VƏ SƏRT FİLTRLƏMƏ)
             const contentContainer = document.querySelector('.article-body') || document.querySelector('.news-text') || document.querySelector('.post-content') || document.querySelector('.article-content') || document.querySelector('article') || document.body;
             
             if (contentContainer) {
                 const clone = contentContainer.cloneNode(true);
                 
-                // Lazımsız yan blokları, reklamları, oxşar xəbərləri, menyuları və footer elementlərini kökündən silirik
                 const removeSelectors = [
                     'script', 'style', 'nav', 'header', 'footer', 'form', 'aside', 
                     '.sidebar', '.related-news', '.widgets', '.banner', '.ads', 
@@ -344,11 +343,13 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
                 clone.querySelectorAll('p').forEach(p => {
                     const txt = p.innerText.trim();
-                    if (txt && txt.length > 20) {
+                    // Uzunluğu 30 simvoldan az olanları və status mətnlərini atırıq
+                    if (txt && txt.length > 30) {
+                        const upperTxt = txt.toUpperCase();
                         const lowerTxt = txt.toLowerCase();
                         
-                        // Ödənişli bildirişləri, sosial media çağırışlarını və yan xəbərləri bloklayırıq
                         const isJunk = 
+                            upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
                             lowerTxt.includes('hörmətli istifadəçi') || 
                             lowerTxt.includes('ödənişli') || 
                             lowerTxt.includes('qeydiyyatdan keçin') ||
@@ -409,12 +410,15 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             });
 
-            // 10. İfrem və video mənbələri
-            const unwantedIframes = ['ct.pinterest.com', 'google', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms'];
+            // 10. İfrem və video mənbələri (GÜCLƏNDİRİLMİŞ VİDEO/REKLAM FİLTRİ)
+            const unwantedIframes = ['ct.pinterest.com', 'google', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'];
             document.querySelectorAll('iframe').forEach(iframe => {
                 const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
                 if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
-                    out.body.videoSources.push(src);
+                    // Yalnız həqiqi video embed-lərini (YouTube, Vimeo, mp4 və s.) qəbul edirik
+                    if (src.includes('youtube') || src.includes('vimeo') || src.endsWith('.mp4') || src.includes('embed')) {
+                        out.body.videoSources.push(src);
+                    }
                 }
             });
 
