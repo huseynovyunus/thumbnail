@@ -118,6 +118,13 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
+const MONTHLY_LIMITS = {
+    basic: 50,
+    pro: 10000,
+    ultra: 50000,
+    mega: 300000
+};
+
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) global.rateLimits = {};
     const key = userId || "guest";
