@@ -126,7 +126,7 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
-// 📅 Təqvim əsaslı (Gündəlik və Aylıq) Rate Limit Yoxlaması
+// 📅 Bakı vaxtı ilə Təqvim əsaslı (Gündəlik və Aylıq) Rate Limit Yoxlaması
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) global.rateLimits = {};
     const key = userId || "guest";
@@ -137,9 +137,16 @@ async function checkRateLimit(userId, plan) {
     const dailyLimit = dailyLimits[planKey] || dailyLimits.basic;
     const monthlyLimit = MONTHLY_LIMITS[planKey] || MONTHLY_LIMITS.basic;
 
-    // Cari təqvim günü və ayını təyin edirik
+    // Bakı saat qurşağı ilə dəqiq tarix və ayın təyini (Gecə 00:00 sıfırlanma üçün)
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // Məsələn: "2026-06-07"
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Baku', 
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    
+    const todayStr = formatter.format(now); // Məsələn: "2026-06-07"
     const currentMonthStr = todayStr.substring(0, 7);   // Məsələn: "2026-06"
 
     if (!global.rateLimits[key]) {
@@ -153,13 +160,13 @@ async function checkRateLimit(userId, plan) {
     
     const data = global.rateLimits[key];
 
-    // 1. Gündəlik sıfırlanma: Əgər gün dəyişibsə, gündəlik sayğacı sıfırla
+    // 1. Gündəlik sıfırlanma: Bakı vaxtı ilə gün dəyişibsə
     if (data.lastDate !== todayStr) {
         data.dailyCount = 0;
         data.lastDate = todayStr;
     }
 
-    // 2. Aylıq sıfırlanma: Əgər ay dəyişibsə, aylıq sayğacı sıfırla
+    // 2. Aylıq sıfırlanma: Bakı vaxtı ilə ay dəyişibsə
     if (data.lastMonth !== currentMonthStr) {
         data.monthlyCount = 0;
         data.lastMonth = currentMonthStr;
@@ -216,7 +223,7 @@ function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) 
 // --------------------------------------------------------------------
 // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
-async function scrapeUniversalWeb(targetUrl, plan = "basic") {
+async function scrapeUniversalWeb(targetUrl, plan = "basic", customSay = null) {
     let browser = null;
     try {
         browser = await puppeteer.launch({
@@ -471,9 +478,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         await browser.close();
         browser = null;
 
-        // Plan limitlərinin tətbiqi
+        // Plan limitlərinin tətbiqi (customSay dəstəyi ilə)
         const limits = {
-            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5,
+            para: customSay !== null ? customSay : (PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5),
             img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 3,
             link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 0,
             textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 500
@@ -596,6 +603,9 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     let plan = (req.body?.plan || req.query?.plan || "basic").toString().toLowerCase();
     if (!PLAN_ACCESS[plan]) plan = "basic";
 
+    // İstifadəçinin göndərdiyi 'say' (paraqraf limiti) parametrini oxuyuruq
+    const customSay = req.body?.say || req.query?.say ? parseInt(req.body.say || req.query.say, 10) : null;
+
     const apiKeyInfo = checkApiKey(req);
     const rateLimit = await checkRateLimit(apiKeyInfo?.key || req.ip, plan);
 
@@ -610,7 +620,7 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     }
 
     try {
-        const result = await scrapeUniversalWeb(targetUrl, plan);
+        const result = await scrapeUniversalWeb(targetUrl, plan, customSay);
 
         result.meta = {
             plan_type: plan,
