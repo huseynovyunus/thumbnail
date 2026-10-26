@@ -1,6 +1,6 @@
 // ====================================================================
 // 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
-// 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM YENİLƏNMİŞ VERSİYA
+// 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
 // ====================================================================
 
 require('dotenv').config();
@@ -71,14 +71,6 @@ const PLAN_CONTENT_LIMITS = {
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
 
-// 📊 Aylıq Sorğu Limitləri
-const MONTHLY_LIMITS = {
-    basic: 100,
-    pro: 10000,
-    ultra: 50000,
-    mega: 300000
-};
-
 function ipToLong(ip) {
     const parts = ip.split('.');
     if (parts.length !== 4) return 0;
@@ -110,80 +102,6 @@ function isPrivateOrBlockedIP(input) {
     } catch {
         return true;
     }
-}
-
-function checkApiKey(req) {
-    const proxySecret = req.headers['x-rapidapi-proxy-secret'];
-    if (proxySecret && process.env.RAPIDAPI_PROXY_SECRET && proxySecret === process.env.RAPIDAPI_PROXY_SECRET) {
-        return { key: 'rapidapi-proxy' };
-    }
-    const rapidApiUser = req.headers['x-rapidapi-user'];
-    if (rapidApiUser) return { key: rapidApiUser };
-    const rawHeader = req.headers['x-api-key'] || req.headers['x-rapidapi-key'] || req.headers['authorization'] || null;
-    if (!rawHeader) return null;
-    const apiKey = rawHeader.replace(/^(Bearer|Key)\s+/i, '').trim();
-    if (process.env.RAPIDAPI_KEY && apiKey !== process.env.RAPIDAPI_KEY) return null;
-    return { key: apiKey };
-}
-
-// 📅 Bakı vaxtı ilə Təqvim əsaslı (Gündəlik və Aylıq) Rate Limit Yoxlaması
-async function checkRateLimit(userId, plan) {
-    if (!global.rateLimits) global.rateLimits = {};
-    const key = userId || "guest";
-    
-    const dailyLimits = { basic: 10, pro: 400, ultra: 2000, mega: 10000 };
-    const planKey = String(plan || "basic").toLowerCase();
-    
-    const dailyLimit = dailyLimits[planKey] || dailyLimits.basic;
-    const monthlyLimit = MONTHLY_LIMITS[planKey] || MONTHLY_LIMITS.basic;
-
-    // Bakı saat qurşağı ilə dəqiq tarix və ayın təyini (Gecə 00:00 sıfırlanma üçün)
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Baku', 
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    });
-    
-    const todayStr = formatter.format(now); // Məsələn: "2026-06-07"
-    const currentMonthStr = todayStr.substring(0, 7);   // Məsələn: "2026-06"
-
-    if (!global.rateLimits[key]) {
-        global.rateLimits[key] = { 
-            dailyCount: 0, 
-            monthlyCount: 0, 
-            lastDate: todayStr, 
-            lastMonth: currentMonthStr 
-        };
-    }
-    
-    const data = global.rateLimits[key];
-
-    // 1. Gündəlik sıfırlanma: Bakı vaxtı ilə gün dəyişibsə
-    if (data.lastDate !== todayStr) {
-        data.dailyCount = 0;
-        data.lastDate = todayStr;
-    }
-
-    // 2. Aylıq sıfırlanma: Bakı vaxtı ilə ay dəyişibsə
-    if (data.lastMonth !== currentMonthStr) {
-        data.monthlyCount = 0;
-        data.lastMonth = currentMonthStr;
-    }
-
-    data.dailyCount++;
-    data.monthlyCount++;
-
-    if (data.dailyCount > dailyLimit) {
-        return { allowed: false, retryAfter: 86400, error: "Gündəlik sorğu limitiniz bitdi." };
-    }
-
-    if (data.monthlyCount > monthlyLimit) {
-        return { allowed: false, retryAfter: 2592000, error: "Aylıq abunə limitiniz bitdi." };
-    }
-
-    return { allowed: true, remaining: dailyLimit - data.dailyCount };
 }
 
 function cleanText(text) {
@@ -223,7 +141,7 @@ function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) 
 // --------------------------------------------------------------------
 // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
-async function scrapeUniversalWeb(targetUrl, plan = "basic", customSay = null) {
+async function scrapeUniversalWeb(targetUrl, plan = "basic") {
     let browser = null;
     try {
         browser = await puppeteer.launch({
@@ -374,7 +292,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic", customSay = null) {
             if (h1El) out.body.h1 = h1El.innerText.trim();
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            // 7. Məqalə mətni və paraqraflar (GÜCLƏNDİRİLMİŞ VƏ SƏRT FİLTRLƏMƏ)
+            // 7. Məqalə mətni və paraqraflər (GÜCLƏNDİRİLMİŞ VƏ SƏRT FİLTRLƏMƏ)
             const contentContainer = document.querySelector('.article-body') || document.querySelector('.news-text') || document.querySelector('.post-content') || document.querySelector('.article-content') || document.querySelector('article') || document.body;
             
             if (contentContainer) {
@@ -478,16 +396,16 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic", customSay = null) {
         await browser.close();
         browser = null;
 
-        // Plan limitlərinin tətbiqi (customSay dəstəyi ilə)
+        // Plan limitlərinin tətbiqi (hər planın öz təbii limitinə görə avtomatik)
         const limits = {
-            para: customSay !== null ? customSay : (PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5),
+            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5,
             img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 3,
             link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 0,
             textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 500
         };
 
         const finalParagraphs = limits.para === null ? extracted.body.paragraphs : extracted.body.paragraphs.slice(0, limits.para);
-        let fullText = extracted.body.paragraphs.join("\n\n");
+        let fullText = finalParagraphs.join("\n\n");
         if (limits.textLen !== null && fullText.length > limits.textLen) {
             fullText = fullText.substring(0, limits.textLen) + "...";
         }
@@ -500,7 +418,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic", customSay = null) {
         const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
         const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
 
-        // 🛡️ "undefined" xətasının qarşısını alan təmiz canonical link yoxlaması
         const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined') 
             ? extracted.head.canonical 
             : targetUrl;
@@ -603,28 +520,11 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     let plan = (req.body?.plan || req.query?.plan || "basic").toString().toLowerCase();
     if (!PLAN_ACCESS[plan]) plan = "basic";
 
-    // İstifadəçinin göndərdiyi 'say' (paraqraf limiti) parametrini oxuyuruq
-    const customSay = req.body?.say || req.query?.say ? parseInt(req.body.say || req.query.say, 10) : null;
-
-    const apiKeyInfo = checkApiKey(req);
-    const rateLimit = await checkRateLimit(apiKeyInfo?.key || req.ip, plan);
-
-    if (!rateLimit.allowed) {
-        return res.status(429).json({
-            success: false,
-            code: 429,
-            status: "rate_limit_exceeded",
-            error: rateLimit.error || "Gündəlik sorğu limitiniz bitdi.",
-            retry_after_seconds: rateLimit.retryAfter
-        });
-    }
-
     try {
-        const result = await scrapeUniversalWeb(targetUrl, plan, customSay);
+        const result = await scrapeUniversalWeb(targetUrl, plan);
 
         result.meta = {
             plan_type: plan,
-            quota_remaining: rateLimit.remaining,
             response_time_ms: Date.now() - startTime,
             timestamp: new Date().toISOString()
         };
