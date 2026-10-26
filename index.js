@@ -71,6 +71,14 @@ const PLAN_CONTENT_LIMITS = {
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
 
+// 📊 Aylıq Sorğu Limitləri
+const MONTHLY_LIMITS = {
+    basic: 100,
+    pro: 10000,
+    ultra: 50000,
+    mega: 300000
+};
+
 function ipToLong(ip) {
     const parts = ip.split('.');
     if (parts.length !== 4) return 0;
@@ -118,32 +126,52 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
-const MONTHLY_LIMITS = {
-    basic: 50,
-    pro: 10000,
-    ultra: 50000,
-    mega: 300000
-};
-
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) global.rateLimits = {};
     const key = userId || "guest";
-    const limits = { basic: 10, pro: 400, ultra: 2000, mega: 10000 };
-    const limit = limits[String(plan || "basic").toLowerCase()] || limits.basic;
+    
+    const dailyLimits = { basic: 10, pro: 400, ultra: 2000, mega: 10000 };
+    const planKey = String(plan || "basic").toLowerCase();
+    
+    const dailyLimit = dailyLimits[planKey] || dailyLimits.basic;
+    const monthlyLimit = MONTHLY_LIMITS[planKey] || MONTHLY_LIMITS.basic;
 
     if (!global.rateLimits[key]) {
-        global.rateLimits[key] = { count: 0, createdAt: Date.now() };
+        global.rateLimits[key] = { 
+            dailyCount: 0, 
+            monthlyCount: 0, 
+            dailyCreatedAt: Date.now(), 
+            monthlyCreatedAt: Date.now() 
+        };
     }
+    
     const data = global.rateLimits[key];
-    if (Date.now() - data.createdAt > 86400000) {
-        data.count = 0;
-        data.createdAt = Date.now();
+    const now = Date.now();
+
+    // Gündəlik limitin sıfırlanması (24 saat / 86400000 ms)
+    if (now - data.dailyCreatedAt > 86400000) {
+        data.dailyCount = 0;
+        data.dailyCreatedAt = now;
     }
-    data.count++;
-    if (data.count > limit) {
-        return { allowed: false, retryAfter: 86400 };
+
+    // Aylıq limitin sıfırlanması (30 gün / 2592000000 ms)
+    if (now - data.monthlyCreatedAt > 2592000000) {
+        data.monthlyCount = 0;
+        data.monthlyCreatedAt = now;
     }
-    return { allowed: true, remaining: limit - data.count };
+
+    data.dailyCount++;
+    data.monthlyCount++;
+
+    if (data.dailyCount > dailyLimit) {
+        return { allowed: false, retryAfter: 86400, error: "Gündəlik sorğu limitiniz bitdi." };
+    }
+
+    if (data.monthlyCount > monthlyLimit) {
+        return { allowed: false, retryAfter: 2592000, error: "Aylıq abunə limitiniz bitdi." };
+    }
+
+    return { allowed: true, remaining: dailyLimit - data.dailyCount };
 }
 
 function cleanText(text) {
@@ -350,7 +378,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
                 clone.querySelectorAll('p').forEach(p => {
                     const txt = p.innerText.trim();
-                    // Uzunluğu 30 simvoldan az olanları və status mətnlərini atırıq
                     if (txt && txt.length > 30) {
                         const upperTxt = txt.toUpperCase();
                         const lowerTxt = txt.toLowerCase();
@@ -422,7 +449,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             document.querySelectorAll('iframe').forEach(iframe => {
                 const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
                 if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
-                    // Yalnız həqiqi video embed-lərini (YouTube, Vimeo, mp4 və s.) qəbul edirik
                     if (src.includes('youtube') || src.includes('vimeo') || src.endsWith('.mp4') || src.includes('embed')) {
                         out.body.videoSources.push(src);
                     }
@@ -462,6 +488,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
         const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
 
+        // 🛡️ "undefined" xətasının qarşısını alan təmiz canonical link yoxlaması
+        const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined') 
+            ? extracted.head.canonical 
+            : targetUrl;
+
         // Embed HTML
         const hasVideo = extracted.body.videoSources.length > 0;
         let embedHtml = '';
@@ -480,7 +511,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             description: finalDescription,
             thumbnail_url: thumbnail,
             favicon_url: extracted.head.favicon,
-            canonical_url: extracted.head.canonical || targetUrl,
+            canonical_url: finalCanonical,
             author: extracted.head.author || null,
             site_name: finalSiteName,
             embed_html: embedHtml,
@@ -489,7 +520,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 title: finalTitle,
                 description: finalDescription,
                 site_name: finalSiteName,
-                canonical_url: extracted.head.canonical,
+                canonical_url: finalCanonical,
                 favicon: extracted.head.favicon,
                 author: extracted.head.author,
                 keywords: extracted.head.keywords,
@@ -568,7 +599,7 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
             success: false,
             code: 429,
             status: "rate_limit_exceeded",
-            error: "Gündəlik sorğu limitiniz bitdi.",
+            error: rateLimit.error || "Gündəlik sorğu limitiniz bitdi.",
             retry_after_seconds: rateLimit.retryAfter
         });
     }
