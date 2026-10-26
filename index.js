@@ -126,6 +126,7 @@ function checkApiKey(req) {
     return { key: apiKey };
 }
 
+// 📅 Təqvim əsaslı (Gündəlik və Aylıq) Rate Limit Yoxlaması
 async function checkRateLimit(userId, plan) {
     if (!global.rateLimits) global.rateLimits = {};
     const key = userId || "guest";
@@ -136,28 +137,32 @@ async function checkRateLimit(userId, plan) {
     const dailyLimit = dailyLimits[planKey] || dailyLimits.basic;
     const monthlyLimit = MONTHLY_LIMITS[planKey] || MONTHLY_LIMITS.basic;
 
+    // Cari təqvim günü və ayını təyin edirik
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0]; // Məsələn: "2026-06-07"
+    const currentMonthStr = todayStr.substring(0, 7);   // Məsələn: "2026-06"
+
     if (!global.rateLimits[key]) {
         global.rateLimits[key] = { 
             dailyCount: 0, 
             monthlyCount: 0, 
-            dailyCreatedAt: Date.now(), 
-            monthlyCreatedAt: Date.now() 
+            lastDate: todayStr, 
+            lastMonth: currentMonthStr 
         };
     }
     
     const data = global.rateLimits[key];
-    const now = Date.now();
 
-    // Gündəlik limitin sıfırlanması (24 saat / 86400000 ms)
-    if (now - data.dailyCreatedAt > 86400000) {
+    // 1. Gündəlik sıfırlanma: Əgər gün dəyişibsə, gündəlik sayğacı sıfırla
+    if (data.lastDate !== todayStr) {
         data.dailyCount = 0;
-        data.dailyCreatedAt = now;
+        data.lastDate = todayStr;
     }
 
-    // Aylıq limitin sıfırlanması (30 gün / 2592000000 ms)
-    if (now - data.monthlyCreatedAt > 2592000000) {
+    // 2. Aylıq sıfırlanma: Əgər ay dəyişibsə, aylıq sayğacı sıfırla
+    if (data.lastMonth !== currentMonthStr) {
         data.monthlyCount = 0;
-        data.monthlyCreatedAt = now;
+        data.lastMonth = currentMonthStr;
     }
 
     data.dailyCount++;
