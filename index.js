@@ -48,7 +48,7 @@ app.all(['/health', '/healrh'], (req, res) => {
 });
 
 // --------------------------------------------------------------------
-// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ
+// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ (RAPIDAPI ADLARINA UYĞUNLAŞDIRILDI)
 // --------------------------------------------------------------------
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
@@ -62,11 +62,12 @@ const PRIVATE_IP_RANGES = [
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
+// RapidAPI plan adları: basic, pro, ultra, mega
 const PLAN_CONTENT_LIMITS = {
-    contentLimit: { basic: 500, pro: 5000, ultra: null, mega: null },
-    paragraphLimit: { basic: 5, pro: 30, ultra: null, mega: null },
-    imageLimit: { basic: 3, pro: 30, ultra: null, mega: null },
-    linkLimit: { basic: 0, pro: 50, ultra: null, mega: null }
+    contentLimit:   { basic: 2000, pro: 5000, ultra: 15000, mega: null },
+    paragraphLimit: { basic: 15,   pro: 30,   ultra: 100,   mega: null },
+    imageLimit:     { basic: 10,   pro: 30,   ultra: 100,   mega: null },
+    linkLimit:      { basic: 20,   pro: 50,   ultra: 200,   mega: null }
 };
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
@@ -114,7 +115,7 @@ function cleanText(text) {
         .trim();
 }
 
-// ⚡ Qısa linkləri (pin.it, bit.ly və s.) əsl URL-ə çevirir
+// ⚡ Qısa linkləri əsl URL-ə çevirir
 async function resolveShortUrl(targetUrl) {
     try {
         const u = new URL(targetUrl);
@@ -167,7 +168,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
         });
 
-        // 🛡️ Render 512MB RAM mühafizəsi: Şəkil, şrift və CSS-ləri ləğv edirik, JS-i saxlayırıq!
+        // 🛡️ Render 512MB RAM mühafizəsi
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const resource = req.resourceType();
@@ -183,10 +184,8 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             timeout: 25000
         });
 
-        // ⏳ Mühüm: SPA və dinamik saytların <head>-i doldurması üçün 1 saniyə gözləyirik
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // 🧠 BÜTÜN <HEAD>, META, OG, TWITTER VƏ MƏZMUNUN DƏRİN ÇIXARIŞI
         const extracted = await page.evaluate((pageUrl) => {
             const out = {
                 head: {
@@ -213,13 +212,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 }
             };
 
-            // 1. <title> oxunması
             const titleEl = document.querySelector('title');
             if (titleEl && titleEl.innerText) {
                 out.head.title = titleEl.innerText.trim();
             }
 
-            // 2. BÜTÜN <head> və səhifədəki <meta> teqlərinin toplanması
             document.querySelectorAll('meta').forEach(meta => {
                 const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
                 const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
@@ -249,7 +246,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 }
             });
 
-            // 3. Link teqləri (Canonical və Favicon)
             const canonicalEl = document.querySelector('link[rel="canonical"]');
             if (canonicalEl && canonicalEl.getAttribute('href')) {
                 out.head.canonical = canonicalEl.getAttribute('href');
@@ -271,7 +267,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             }
 
-            // 4. Schema.org JSON-LD teqləri
             document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
                 try {
                     const raw = script.innerText.trim();
@@ -292,7 +287,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             if (h1El) out.body.h1 = h1El.innerText.trim();
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            // 7. Məqalə mətni və paraqraflər (GÜCLƏNDİRİLMİŞ VƏ SƏRT FİLTRLƏMƏ)
             const contentContainer = document.querySelector('.article-body') || document.querySelector('.news-text') || document.querySelector('.post-content') || document.querySelector('.article-content') || document.querySelector('article') || document.body;
             
             if (contentContainer) {
@@ -333,7 +327,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 out.head.description = out.body.paragraphs[0];
             }
 
-            // 8. Əsas şəkillər (og:image ilk sıraya qoyulur)
             const seenImages = new Set();
             const ogImg = out.head.open_graph.image || out.head.twitter.image;
             if (ogImg) {
@@ -359,7 +352,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             });
 
-            // 9. Keçid linkləri
             const seenLinks = new Set();
             document.querySelectorAll('a').forEach(a => {
                 const href = a.getAttribute('href');
@@ -374,7 +366,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             });
 
-            // 10. İfrem və video mənbələri (GÜCLƏNDİRİLMİŞ VİDEO/REKLAM FİLTRİ)
             const unwantedIframes = ['ct.pinterest.com', 'google', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'];
             document.querySelectorAll('iframe').forEach(iframe => {
                 const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
@@ -396,12 +387,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         await browser.close();
         browser = null;
 
-        // Plan limitlərinin tətbiqi (hər planın öz təbii limitinə görə avtomatik)
         const limits = {
-            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 5,
-            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 3,
-            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 0,
-            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 500
+            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 15,
+            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
+            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 20,
+            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 2000
         };
 
         const finalParagraphs = limits.para === null ? extracted.body.paragraphs : extracted.body.paragraphs.slice(0, limits.para);
@@ -422,7 +412,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             ? extracted.head.canonical 
             : targetUrl;
 
-        // Embed HTML
         const hasVideo = extracted.body.videoSources.length > 0;
         let embedHtml = '';
         if (hasVideo) {
@@ -517,7 +506,7 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
     }
 
-    let plan = (req.body?.plan || req.query?.plan || "basic").toString().toLowerCase();
+    let plan = (req.body?.plan || req.body?.planType || req.query?.plan || req.query?.planType || "basic").toString().toLowerCase();
     if (!PLAN_ACCESS[plan]) plan = "basic";
 
     try {
