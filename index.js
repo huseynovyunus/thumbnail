@@ -387,6 +387,27 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         await browser.close();
         browser = null;
 
+        const pageTitle = extracted.head.title || '';
+        const pageDesc = extracted.head.description || '';
+        
+        if (
+            pageTitle.includes("Bir dakika lütfen") || 
+            pageTitle.includes("Attention Required") || 
+            pageDesc.includes("kötü niyetli botlara karşı") ||
+            pageTitle.includes("Access Denied")
+        ) {
+            return {
+                success: false,
+                code: 403,
+                status: "error",
+                error: "Target website is protected by Cloudflare or bot verification. Access blocked.",
+                name: pageTitle,
+                description: pageDesc,
+                site_name: new URL(targetUrl).hostname,
+                is_video: false
+            };
+        }
+
         const limits = {
             para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 15,
             img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
