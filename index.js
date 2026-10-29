@@ -366,16 +366,32 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             });
 
-            const unwantedIframes = ['ct.pinterest.com', 'google', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'];
-            document.querySelectorAll('iframe').forEach(iframe => {
-                const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
-                if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
-                    if (src.includes('youtube') || src.includes('vimeo') || src.endsWith('.mp4') || src.includes('embed')) {
-                        out.body.videoSources.push(src);
-                    }
-                }
-            });
+            // YENİ HİSSƏ (Bunu əlavə edirsən):
+const unwantedIframes = ['ct.pinterest.com', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'];
 
+document.querySelectorAll('iframe').forEach(iframe => {
+    const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+    if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
+        if (
+            src &&
+            (
+                src.includes('youtube') ||
+                src.includes('vimeo') ||
+                src.includes('embed') ||
+                src.includes('.m3u8') ||
+                src.includes('.mp4') ||
+                src.includes('.mpd') ||
+                src.includes('baku.tv')
+            ) &&
+            !src.startsWith('blob:')
+        ) {
+            if (!out.body.videoSources.includes(src)) {
+                out.body.videoSources.push(src);
+            }
+        }
+    }
+});
+            
             document.querySelectorAll('video, video source').forEach(v => {
                 const src = v.getAttribute('src');
                 if (src) out.body.videoSources.push(src);
