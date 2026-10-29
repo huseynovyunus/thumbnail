@@ -10,6 +10,22 @@ const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 
+// 1. Stealth plagini aktivləşdiririk
+puppeteer.use(StealthPlugin());
+
+// 2. puppeteer-core-u əlavə edirik
+puppeteer.addCore(require('puppeteer-core'));
+
+// Brauzeri işə salan funksiyamız:
+async function getBrowser() {
+  return await puppeteer.launch({
+    args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+  });
+}
+
 const app = express();
 
 app.use(express.json());
