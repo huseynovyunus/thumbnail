@@ -392,10 +392,14 @@ document.querySelectorAll('iframe').forEach(iframe => {
     }
 });
             
-            document.querySelectorAll('video, video source').forEach(v => {
-                const src = v.getAttribute('src');
-                if (src) out.body.videoSources.push(src);
-            });
+         document.querySelectorAll('video, video source').forEach(v => {
+             const src = v.getAttribute('src');
+             if (src && !src.startsWith('blob:')) {
+                 if (!out.body.videoSources.includes(src)) {
+                     out.body.videoSources.push(src);
+                 }
+             }
+        });
 
             return out;
         }, targetUrl);
