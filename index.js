@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
-const puppeteer = require('puppeteer-extra');
+const puppeteer = require('puppeteer-core');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const chromium = require('@sparticuz/chromium');
 
