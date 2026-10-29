@@ -16,6 +16,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
-    "puppeteer-core": "^22.15.0"
+    "puppeteer-core": "^22.15.0",
+    "puppeteer-extra": "^2.11.0",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
-}
+ 
