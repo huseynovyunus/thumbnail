@@ -401,6 +401,55 @@ document.querySelectorAll('iframe').forEach(iframe => {
              }
         });
 
+            // ==========================================
+         // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
+         // ==========================================
+         
+         // 1. OpenGraph / Twitter Player teqlərindən video yoxla
+         const ogVideo = out.head.open_graph.video || out.head.open_graph['video:url'] || out.head.open_graph['video:secure_url'] || out.head.twitter.player;
+         if (ogVideo && !ogVideo.startsWith('blob:')) {
+             if (!out.body.videoSources.includes(ogVideo)) {
+                 out.body.videoSources.push(ogVideo);
+             }
+         }
+
+         // 2. JSON-LD (VideoObject) daxilindən video yoxla
+         out.head.json_ld.forEach(item => {
+             if (item['@type'] === 'VideoObject') {
+                 const vUrl = item.embedUrl || item.contentUrl;
+                 if (vUrl && !vUrl.startsWith('blob:')) {
+                     if (!out.body.videoSources.includes(vUrl)) {
+                         out.body.videoSources.push(vUrl);
+                     }
+                 }
+             }
+         });
+
+         // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd axınlarını yoxla
+         document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
+             const src = el.getAttribute('data-src') || el.getAttribute('data-url') || el.getAttribute('data-stream') || el.getAttribute('data-hls');
+             if (src && !src.startsWith('blob:') && (src.includes('.m3u8') || src.includes('.mpd') || src.includes('.mp4'))) {
+                 if (!out.body.videoSources.includes(src)) {
+                     out.body.videoSources.push(src);
+                 }
+             }
+         });
+
+         // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
+         if (out.body.videoSources.length === 0) {
+             document.querySelectorAll('script').forEach(script => {
+                 const text = script.innerText || '';
+                 const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd)/i);
+                 if (match && match[0]) {
+                     const streamUrl = match[0];
+                     if (!streamUrl.startsWith('blob:') && !out.body.videoSources.includes(streamUrl)) {
+                         out.body.videoSources.push(streamUrl);
+                     }
+                 }
+             });
+         }
+         // ==========================================
+            
             return out;
         }, targetUrl);
 
