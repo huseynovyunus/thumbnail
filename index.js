@@ -523,6 +523,31 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         if (isPrivateOrBlockedIP(parsed.hostname)) {
             return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
         }
+
+        // ====================================================
+        // 🌟 YENİ: SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
+        // ====================================================
+        const BLOCKED_SOCIAL_DOMAINS = [
+            'youtube.com', 'youtu.be', 
+            'tiktok.com', 
+            'instagram.com', 
+            'facebook.com', 
+            'twitter.com', 'x.com'
+        ];
+
+        const hostnameLower = parsed.hostname.toLowerCase();
+        const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(domain => hostnameLower.includes(domain));
+        
+        if (isSocialBlocked) {
+            return res.status(400).json({
+                success: false,
+                code: 400,
+                status: "error",
+                error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
+            });
+        }
+        // ====================================================
+        
     } catch {
         return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
     }
