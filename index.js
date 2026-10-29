@@ -8,6 +8,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const chromium = require('@sparticuz/chromium');
 
 // 1. Stealth plagini aktivləşdiririk
