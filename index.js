@@ -10,12 +10,6 @@ const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 
-// 1. Stealth plagini aktivləşdiririk
-puppeteer.use(StealthPlugin());
-
-// 2. puppeteer-core-u əlavə edirik
-puppeteer.addCore(require('puppeteer-core'));
-
 const app = express();
 
 app.use(express.json());
