@@ -181,7 +181,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
         await page.goto(targetUrl, {
             waitUntil: 'domcontentloaded',
-            timeout: 25000
+            timeout: 12000
         });
 
         await new Promise(resolve => setTimeout(resolve, 1000));
