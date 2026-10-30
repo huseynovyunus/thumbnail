@@ -507,8 +507,23 @@ document.querySelectorAll('iframe').forEach(iframe => {
             textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
         };
 
-        const finalParagraphs = limits.para === null ? extracted.body.paragraphs : extracted.body.paragraphs.slice(0, limits.para);
-        let fullText = finalParagraphs.join("\n\n");
+       // 1. Əvvəlcə bütün xam paraqrafları birləşdirib tam mətni alırıq
+let fullText = extracted.body.paragraphs.join("\n\n");
+
+// 2. Simvol limitinə (`contentLimit`) görə kəsirik
+if (limits.textLen !== null && fullText.length > limits.textLen) {
+    fullText = fullText.substring(0, limits.textLen) + "...";
+}
+
+// 3. Paraqraf limitini (`paragraphLimit`) tətbiq edirik
+const finalParagraphs = limits.para === null 
+    ? extracted.body.paragraphs 
+    : extracted.body.paragraphs.slice(0, limits.para);
+
+// Paraqraf siyahısını da simvol limitinə uyğun formalaşdırın
+const finalParagraphs = limits.para === null 
+    ? extracted.body.paragraphs 
+    : extracted.body.paragraphs.slice(0, limits.para);
         if (limits.textLen !== null && fullText.length > limits.textLen) {
             fullText = fullText.substring(0, limits.textLen) + "...";
         }
