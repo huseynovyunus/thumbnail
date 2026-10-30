@@ -623,7 +623,9 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
     }
 
-    let plan = (req.body?.plan || req.body?.planType || req.query?.plan || req.query?.planType || "basic").toString().toLowerCase();
+    // 💡 PLAN TƏYİNİ: RapidAPI başlığını (header) və ya lokal test üçün body/query-ni yoxlayır
+    const rapidApiSub = req.headers['x-rapidapi-subscription']?.toLowerCase();
+    let plan = (rapidApiSub || req.body?.plan || req.body?.planType || req.query?.plan || req.query?.planType || "basic").toString().toLowerCase();
     if (!PLAN_ACCESS[plan]) plan = "basic";
 
     try {
