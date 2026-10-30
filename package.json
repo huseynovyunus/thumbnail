@@ -1,7 +1,7 @@
 {
-  "name": "smart-content-extractor",
+  "name": "smart-web-scraper",
   "version": "1.0.0",
-  "description": "URL metadata, text, image and video extraction API",
+  "description": "Fast and reliable web scraper API to extract text, images, links, and deep metadata from any URL",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -16,6 +16,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
-    "puppeteer-core": "^22.15.0"
+    "puppeteer-core": "^22.15.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
