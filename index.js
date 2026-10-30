@@ -87,10 +87,10 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 // RapidAPI plan adları: basic, pro, ultra, mega
 const PLAN_CONTENT_LIMITS = {
-    contentLimit:   { basic: 1000, pro: 500, ultra: null, mega: null },
-    paragraphLimit: { basic: 10,   pro: 30,   ultra: null,   mega: null },
-    imageLimit:     { basic: 10,   pro: 30,   ultra: null,   mega: null },
-    linkLimit:      { basic: 10,   pro: 50,   ultra: null,   mega: null }
+    contentLimit:   { basic: 1000, pro: 50, ultra: null, mega: null },
+    paragraphLimit: { basic: 10,   pro: 3,   ultra: null,   mega: null },
+    imageLimit:     { basic: 10,   pro: 3,   ultra: null,   mega: null },
+    linkLimit:      { basic: 10,   pro: 3,   ultra: null,   mega: null }
 };
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
