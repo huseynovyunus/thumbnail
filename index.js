@@ -17,24 +17,24 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 🛡️ Sığorta Middleware: Content-Type başlıqsız xam body-ni oxuyur
+// 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
 app.use((req, res, next) => {
-    if (!req.body || Object.keys(req.body).length === 0) {
-        let data = '';
-        req.on('data', chunk => { data += chunk; });
-        req.on('end', () => {
-            if (data) {
-                try {
-                    req.body = JSON.parse(data);
-                } catch (e) {
-                    req.body = { url: data };
-                }
-            }
-            next();
-        });
-    } else {
-        next();
-    }
+     if (req.body && Object.keys(req.body).length > 0) return next();
+
+     let data = '';
+     req.on('data', chunk => { data += chunk; });
+     req.on('end', () => {
+         if (data) {
+             try {
+                 req.body = JSON.parse(data);
+             } catch (e) {
+                 req.body = { url: data.trim() };
+             }
+         } else {
+             req.body = {};
+         }
+         next();
+     });
 });
 
 // --------------------------------------------------------------------
