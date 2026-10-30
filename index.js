@@ -19,22 +19,43 @@ app.use(express.urlencoded({ extended: true }));
 
 // 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
 app.use((req, res, next) => {
-     if (req.body && Object.keys(req.body).length > 0) return next();
+    if (req.body && Object.keys(req.body).length > 0) return next();
 
-     let data = '';
-     req.on('data', chunk => { data += chunk; });
-     req.on('end', () => {
-         if (data) {
-             try {
-                 req.body = JSON.parse(data);
-             } catch (e) {
-                 req.body = { url: data.trim() };
-             }
-         } else {
-             req.body = {};
-         }
-         next();
-     });
+    let data = '';
+    let finished = false;
+
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+        if (finished) return;
+        finished = true;
+        if (data) {
+            try {
+                req.body = JSON.parse(data);
+            } catch (e) {
+                req.body = { url: data.trim() };
+            }
+        } else {
+            req.body = {};
+        }
+        next();
+    });
+
+    // ⚡ 2 saniyə ərzində 'end' gəlməzsə, asılı qalmanın qarşısını al
+    setTimeout(() => {
+        if (!finished) {
+            finished = true;
+            if (data && !req.body) {
+                try {
+                    req.body = JSON.parse(data);
+                } catch (e) {
+                    req.body = { url: data.trim() };
+                }
+            } else if (!req.body) {
+                req.body = {};
+            }
+            next();
+        }
+    }, 2000);
 });
 
 // --------------------------------------------------------------------
