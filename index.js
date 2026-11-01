@@ -606,23 +606,23 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     const startTime = Date.now();
 
     let targetUrl = req.body?.url || req.query?.url;
-        if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
+    if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
 
-        if (!targetUrl || typeof targetUrl !== 'string') {
-            return res.status(400).json({
-                success: false,
-                code: 400,
-                status: "error",
-                error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
-            });
-        }
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).json({
+            success: false, 
+            code: 400, 
+            status: "error",
+            error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
+        });
+    }
 
-        targetUrl = targetUrl.trim();
-        if (!/^https?:\/\//i.test(targetUrl)) {
-            targetUrl = 'https://' + targetUrl;
-        }
+    targetUrl = targetUrl.trim();
+    if (!/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = 'https://' + targetUrl;
+    }
 
-         targetUrl = await resolveShortUrl(targetUrl);
+    targetUrl = await resolveShortUrl(targetUrl);
     console.log("Emal olunmuş URL:", targetUrl);
 
     let parsed;
@@ -675,11 +675,6 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         req.query?.plan_type || 
         req.query?.planType || 
         "basic";
-
-    let plan = rawPlan.toString().toLowerCase().trim();
-    if (!PLAN_ACCESS[plan]) {
-        plan = "basic";
-    }
 
     let plan = rawPlan.toString().toLowerCase().trim();
     if (!PLAN_ACCESS[plan]) {
