@@ -171,12 +171,18 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         browser = await puppeteer.launch({
             args: [
                 ...chromium.args,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process',
-                '--no-zygote'
+               '--no-sandbox',
+               '--disable-setuid-sandbox',
+               '--disable-dev-shm-usage',
+               '--disable-gpu',
+               '--single-process',
+               '--no-zygote',
+               '--disable-blink-features=AutomationControlled', // 👈 Bot deteksiyasını söndürür
+               '--disable-infobars',
+               '--window-size=1920,1080',
+               '--start-maximized',
+               '--hide-scrollbars',
+               '--disable-web-security'
             ],
             defaultViewport: { width: 1280, height: 800 },
             executablePath: await chromium.executablePath(),
