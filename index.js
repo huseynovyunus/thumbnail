@@ -662,7 +662,7 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         }
         // ====================================================
         
-    } catch {
+    } catch (e) {
         return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
     }
 
