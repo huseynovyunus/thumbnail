@@ -622,12 +622,12 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
             targetUrl = 'https://' + targetUrl;
         }
 
-        targetUrl = await resolveShortUrl(targetUrl);
+         targetUrl = await resolveShortUrl(targetUrl);
+    console.log("Emal olunmuş URL:", targetUrl);
 
-    console.log("Emal olunmuş URL:", targetUrl); // 👈 Yoxlanılan son ünvan
-
+    let parsed;
     try {
-        const parsed = new URL(targetUrl);
+        parsed = new URL(targetUrl);
         if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
             return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
         }
@@ -639,35 +639,31 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
     }
 
-        // ====================================================
-        // 🌟 YENİ: SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
-        // ====================================================
-        const BLOCKED_SOCIAL_DOMAINS = [
-            'youtube.com', 'youtu.be', 
-            'tiktok.com', 
-            'instagram.com', 
-            'facebook.com', 
-            'twitter.com', 'x.com'
-        ];
+    // ====================================================
+    // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
+    // ====================================================
+    const BLOCKED_SOCIAL_DOMAINS = [
+        'youtube.com', 'youtu.be', 
+        'tiktok.com', 
+        'instagram.com', 
+        'facebook.com', 
+        'twitter.com', 'x.com'
+    ];
 
-        const hostnameLower = parsed.hostname.toLowerCase();
-        const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(domain => hostnameLower.includes(domain));
-        
-        if (isSocialBlocked) {
-            return res.status(400).json({
-                success: false,
-                code: 400,
-                status: "error",
-                error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
-            });
-        }
-        // ====================================================
-        
-    } catch (e) {
-        return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
+    const hostnameLower = parsed.hostname.toLowerCase();
+    const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(domain => hostnameLower.includes(domain));
+    
+    if (isSocialBlocked) {
+        return res.status(400).json({
+            success: false,
+            code: 400,
+            status: "error",
+            error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
+        });
     }
+    // ====================================================
 
-   // 💡 PLAN TƏYİNİ (Avtomatik və ya Əllə Seçim)
+    // 💡 PLAN TƏYİNİ
     const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
     
     let rawPlan = 
@@ -679,6 +675,11 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         req.query?.plan_type || 
         req.query?.planType || 
         "basic";
+
+    let plan = rawPlan.toString().toLowerCase().trim();
+    if (!PLAN_ACCESS[plan]) {
+        plan = "basic";
+    }
 
     let plan = rawPlan.toString().toLowerCase().trim();
     if (!PLAN_ACCESS[plan]) {
