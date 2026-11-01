@@ -606,23 +606,23 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     const startTime = Date.now();
 
     let targetUrl = req.body?.url || req.query?.url;
-    if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
+        if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
 
-    if (!targetUrl || typeof targetUrl !== 'string') {
-        return res.status(400).json({
-            success: false,
-            code: 400,
-            status: "error",
-            error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
-        });
-    }
+        if (!targetUrl || typeof targetUrl !== 'string') {
+            return res.status(400).json({
+                success: false,
+                code: 400,
+                status: "error",
+                error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
+            });
+        }
 
-    targetUrl = targetUrl.trim();
-    if (!/^https?:\/\//i.test(targetUrl)) {
-        targetUrl = 'https://' + targetUrl;
-    }
+        targetUrl = targetUrl.trim();
+        if (!/^https?:\/\//i.test(targetUrl)) {
+            targetUrl = 'https://' + targetUrl;
+        }
 
-    targetUrl = await resolveShortUrl(targetUrl);
+        targetUrl = await resolveShortUrl(targetUrl);
 
     try {
         const parsed = new URL(targetUrl);
