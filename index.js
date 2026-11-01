@@ -624,6 +624,8 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
 
         targetUrl = await resolveShortUrl(targetUrl);
 
+    console.log("Emal olunmuş URL:", targetUrl); // 👈 Yoxlanılan son ünvan
+
     try {
         const parsed = new URL(targetUrl);
         if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
