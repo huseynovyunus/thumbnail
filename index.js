@@ -633,12 +633,9 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         if (isPrivateOrBlockedIP(parsed.hostname)) {
             return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
         }
-
-        } catch (e) {
-        return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." 
-      });
+    } catch (e) {
+        return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
     }
-
         // ====================================================
         // 🌟 YENİ: SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
         // ====================================================
