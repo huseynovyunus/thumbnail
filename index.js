@@ -629,9 +629,14 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
             return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
         }
+
         if (isPrivateOrBlockedIP(parsed.hostname)) {
             return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
         }
+
+        } catch (e) {
+        return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
+    }
 
         // ====================================================
         // 🌟 YENİ: SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
