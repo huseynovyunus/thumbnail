@@ -651,11 +651,24 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: "Daxil edilən URL düzgün deyil." });
     }
 
-    // 💡 PLAN TƏYİNİ: RapidAPI başlığını (header) və ya lokal test üçün body/query-ni yoxlayır
-    const rapidApiSub = req.headers['x-rapidapi-subscription']?.toLowerCase();
-    let plan = (rapidApiSub || req.body?.plan || req.body?.planType || req.query?.plan || req.query?.planType || "basic").toString().toLowerCase();
-    if (!PLAN_ACCESS[plan]) plan = "basic";
+   // 💡 PLAN TƏYİNİ (Avtomatik və ya Əllə Seçim)
+    const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
+    
+    let rawPlan = 
+        rapidApiSub || 
+        req.body?.plan || 
+        req.body?.plan_type || 
+        req.body?.planType || 
+        req.query?.plan || 
+        req.query?.plan_type || 
+        req.query?.planType || 
+        "basic";
 
+    let plan = rawPlan.toString().toLowerCase().trim();
+    if (!PLAN_ACCESS[plan]) {
+        plan = "basic";
+    }
+    
     try {
         const result = await scrapeUniversalWeb(targetUrl, plan);
 
