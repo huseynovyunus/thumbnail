@@ -639,7 +639,6 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
         return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
     }
 
-    try {
         // ====================================================
         // 🌟 YENİ: SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
         // ====================================================
