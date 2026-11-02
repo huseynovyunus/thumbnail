@@ -182,7 +182,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                '--window-size=1920,1080',
                '--start-maximized',
                '--hide-scrollbars',
-               '--disable-web-security'
+               '--disable-web-security',
                '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7' // 👈 Dil uyğunluğu
             ],
             defaultViewport: { width: 1280, height: 800 },
