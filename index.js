@@ -210,12 +210,12 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         });
 
         await page.goto(targetUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 15000
+            waitUntil: 'networkidle2', // 👈 Cloudflare yoxlamasının tam tamamlanmasını gözləyir
+            timeout: 20000
         });
 
         // 🛡️ Sabit deyil, hər dəfə təsadüfi olaraq 4 ilə 6.5 saniyə arası gözlə
-        const randomDelay = Math.floor(Math.random() * 2500) + 4000;
+        const randomDelay = Math.floor(Math.random() * 1500) + 4500;
         await new Promise(resolve => setTimeout(resolve, randomDelay));
         
         // Daha real insan mouse və scroll hərəkətləri
