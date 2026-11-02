@@ -183,7 +183,8 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                '--start-maximized',
                '--hide-scrollbars',
                '--disable-web-security',
-               '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7' // 👈 Dil uyğunluğu
+               '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7', // 👈 Dil uyğunluğu
+               '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
             ],
             defaultViewport: { width: 1280, height: 800 },
             executablePath: await chromium.executablePath(),
