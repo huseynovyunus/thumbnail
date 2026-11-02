@@ -212,11 +212,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
         await page.goto(targetUrl, {
             waitUntil: 'networkidle2', // 👈 Cloudflare yoxlamasının tam tamamlanmasını gözləyir
-            timeout: 15000
+            timeout: 30000
         });
 
         // 🛡️ Sabit deyil, hər dəfə təsadüfi olaraq 4 ilə 6.5 saniyə arası gözlə
-        const randomDelay = Math.floor(Math.random() * 1500) + 3500;
+        const randomDelay = Math.floor(Math.random() * 2000) + 4000;
         await new Promise(resolve => setTimeout(resolve, randomDelay));
         
         // Daha real insan mouse və scroll hərəkətləri
