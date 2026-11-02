@@ -210,14 +210,17 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
         await page.goto(targetUrl, {
             waitUntil: 'domcontentloaded',
-            timeout: 12000
+            timeout: 15000
         });
 
         // 🛡️ Cloudflare-i aldatmaq üçün qısa insan simulyasiyası
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 4500));
         await page.evaluate(() => {
-            window.scrollBy(0, 100);
+            window.scrollBy(0, 200);
+            window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 200 }));
         });
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         const extracted = await page.evaluate((pageUrl) => {
             const out = {
