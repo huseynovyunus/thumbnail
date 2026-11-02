@@ -213,15 +213,23 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             timeout: 15000
         });
 
-        // 🛡️ Cloudflare-i aldatmaq üçün qısa insan simulyasiyası
-        await new Promise(resolve => setTimeout(resolve, 4500));
+        // 🛡️ Sabit deyil, hər dəfə təsadüfi olaraq 4 ilə 6.5 saniyə arası gözlə
+        const randomDelay = Math.floor(Math.random() * 2500) + 4000;
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
+        
+        // Daha real insan mouse və scroll hərəkətləri
         await page.evaluate(() => {
-            window.scrollBy(0, 200);
-            window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 200 }));
+            window.scrollBy(0, Math.floor(Math.random() * 300) + 100);
+            window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true,
+                clientX: Math.floor(Math.random() * 500) + 100,
+                clientY: Math.floor(Math.random() * 400) + 100
+            }));
         });
 
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
+        // Kiçik bir əlavə pauza
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         const extracted = await page.evaluate((pageUrl) => {
             const out = {
                 head: {
