@@ -6,6 +6,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const cors = require('cors'); // 👈 1. Bunu əlavə et
 const axios = require('axios');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
@@ -14,6 +15,7 @@ const chromium = require('@sparticuz/chromium');
 
 const app = express();
 
+app.use(cors()); // 👈 2. Bütün origin-lərə icazə vermək üçün aktivləşdir
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
