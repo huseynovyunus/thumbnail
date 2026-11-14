@@ -506,12 +506,34 @@ if (contentContainer) {
                  }
              };
 
-             const pushUniqueVideo = (rawSrc) => {
-                 const fullUrl = toAbsoluteVideoUrl(rawSrc);
-                 if (fullUrl && !out.body.videoSources.includes(fullUrl)) {
-                     out.body.videoSources.push(fullUrl);
-                 }
-             };
+             const isAdVideoUrl = (urlStr) => {
+                  if (!urlStr) return true;
+                  const lower = urlStr.toLowerCase();
+                  return [
+                      'ads.', 'ad.', '.ads.', 'doubleclick', 'googlesyndication',
+                      '/banner', '/banners/', '/ads/', '/vast', '/preroll',
+                      '/midroll', '/postroll', 'catfish'
+                  ].some((pattern) => lower.includes(pattern));
+              };
+
+              const isAdElement = (el) => {
+                  if (!el || typeof el.closest !== 'function') return false;
+                  return Boolean(el.closest([
+                      '[class*="banner"]', '[id*="banner"]',
+                      '[class*="advert"]', '[id*="advert"]',
+                      '[class*="sponsor"]', '[id*="sponsor"]',
+                      '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle'
+                  ].join(',')));
+              };
+
+              const pushUniqueVideo = (rawSrc, sourceEl = null) => {
+                  if (sourceEl && isAdElement(sourceEl)) return;
+                  const fullUrl = toAbsoluteVideoUrl(rawSrc);
+                  if (!fullUrl || isAdVideoUrl(fullUrl)) return;
+                  if (!out.body.videoSources.includes(fullUrl)) {
+                      out.body.videoSources.push(fullUrl);
+                  }
+              };
 
              const unwantedIframes = [
                  'ct.pinterest.com', 'doubleclick', 'analytics',
