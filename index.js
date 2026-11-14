@@ -470,89 +470,96 @@ if (contentContainer) {
                 } catch {}
             });
 
-            // YENİ HİSSƏ (Bunu əlavə edirsən):
-const unwantedIframes = ['ct.pinterest.com', 'doubleclick', 'analytics', 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'];
-
-document.querySelectorAll('iframe').forEach(iframe => {
-    const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
-    if (src && !unwantedIframes.some(u => src.toLowerCase().includes(u))) {
-        if (
-            src &&
-            (
-                src.includes('youtube') ||
-                src.includes('vimeo') ||
-                src.includes('embed') ||
-                src.includes('.m3u8') ||
-                src.includes('.mp4') ||
-                src.includes('.mpd') ||
-                src.includes('baku.tv')
-            ) &&
-            !src.startsWith('blob:')
-        ) {
-            if (!out.body.videoSources.includes(src)) {
-                out.body.videoSources.push(src);
-            }
-        }
-    }
-});
-            
-         document.querySelectorAll('video, video source').forEach(v => {
-             const src = v.getAttribute('src');
-             if (src && !src.startsWith('blob:')) {
-                 if (!out.body.videoSources.includes(src)) {
-                     out.body.videoSources.push(src);
+            const toAbsoluteVideoUrl = (rawSrc) => {
+                 if (!rawSrc || typeof rawSrc !== 'string') return null;
+                 const trimmed = rawSrc.trim();
+                 if (!trimmed || trimmed.startsWith('blob:') || trimmed.startsWith('javascript:')) {
+                     return null;
                  }
-             }
-        });
-
-         // ==========================================
-         // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
-         // ==========================================
-         
-         // 1. OpenGraph / Twitter Player teqlərindən video yoxla
-         const ogVideo = out.head.open_graph.video || out.head.open_graph['video:url'] || out.head.open_graph['video:secure_url'] || out.head.twitter.player;
-         if (ogVideo && !ogVideo.startsWith('blob:')) {
-             if (!out.body.videoSources.includes(ogVideo)) {
-                 out.body.videoSources.push(ogVideo);
-             }
-         }
-
-         // 2. JSON-LD (VideoObject) daxilindən video yoxla
-         out.head.json_ld.forEach(item => {
-             if (item['@type'] === 'VideoObject') {
-                 const vUrl = item.embedUrl || item.contentUrl;
-                 if (vUrl && !vUrl.startsWith('blob:')) {
-                     if (!out.body.videoSources.includes(vUrl)) {
-                         out.body.videoSources.push(vUrl);
-                     }
+                 try {
+                     return new URL(trimmed, pageUrl).href;
+                 } catch {
+                     return trimmed;
                  }
-             }
-         });
+             };
 
-         // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd axınlarını yoxla
-         document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
-             const src = el.getAttribute('data-src') || el.getAttribute('data-url') || el.getAttribute('data-stream') || el.getAttribute('data-hls');
-             if (src && !src.startsWith('blob:') && (src.includes('.m3u8') || src.includes('.mpd') || src.includes('.mp4'))) {
-                 if (!out.body.videoSources.includes(src)) {
-                     out.body.videoSources.push(src);
+             const pushUniqueVideo = (rawSrc) => {
+                 const fullUrl = toAbsoluteVideoUrl(rawSrc);
+                 if (fullUrl && !out.body.videoSources.includes(fullUrl)) {
+                     out.body.videoSources.push(fullUrl);
                  }
-             }
-         });
+             };
 
-         // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
-         if (out.body.videoSources.length === 0) {
-             document.querySelectorAll('script').forEach(script => {
-                 const text = script.innerText || '';
-                 const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd)/i);
-                 if (match && match[0]) {
-                     const streamUrl = match[0];
-                     if (!streamUrl.startsWith('blob:') && !out.body.videoSources.includes(streamUrl)) {
-                         out.body.videoSources.push(streamUrl);
+             const unwantedIframes = [
+                 'ct.pinterest.com', 'doubleclick', 'analytics',
+                 'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'
+             ];
+
+             document.querySelectorAll('iframe').forEach(iframe => {
+                 const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+                 const lowerSrc = src.toLowerCase();
+                 if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
+                     if (
+                         lowerSrc.includes('youtube') ||
+                         lowerSrc.includes('vimeo') ||
+                         lowerSrc.includes('embed') ||
+                         lowerSrc.includes('.m3u8') ||
+                         lowerSrc.includes('.mp4') ||
+                         lowerSrc.includes('.mpd') ||
+                         lowerSrc.includes('baku.tv')
+                     ) {
+                         pushUniqueVideo(src);
                      }
                  }
              });
-         }
-         // ==========================================
+
+             document.querySelectorAll('video, video source').forEach(v => {
+                 const src = v.getAttribute('src') || v.getAttribute('data-src');
+                 pushUniqueVideo(src);
+             });
+
+             // ==========================================
+             // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
+             // ==========================================
+
+             // 1. OpenGraph / Twitter Player teqlərindən video yoxla
+             const ogVideo =
+                 out.head.open_graph.video ||
+                 out.head.open_graph['video:url'] ||
+                 out.head.open_graph['video:secure_url'] ||
+                 out.head.twitter.player;
+             pushUniqueVideo(ogVideo);
+
+             // 2. JSON-LD (VideoObject) daxilindən video yoxla
+             out.head.json_ld.forEach(item => {
+                 if (item && item['@type'] === 'VideoObject') {
+                     pushUniqueVideo(item.embedUrl || item.contentUrl);
+                 }
+             });
+
+             // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd / .mp4 axınlarını yoxla
+             document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
+                 const src =
+                     el.getAttribute('data-src') ||
+                     el.getAttribute('data-url') ||
+                     el.getAttribute('data-stream') ||
+                     el.getAttribute('data-hls');
+                 if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
+                     pushUniqueVideo(src);
+                 }
+             });
+
+             // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
+             if (out.body.videoSources.length === 0) {
+                 document.querySelectorAll('script').forEach(script => {
+                     const text = script.innerText || '';
+                     const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd|mp4)(?:\?[^"'\s]*)?/i);
+                     if (match && match[0]) {
+                         pushUniqueVideo(match[0]);
+                     }
+                 });
+             }
+             // ==========================================
             
             return out;
         }, targetUrl);
