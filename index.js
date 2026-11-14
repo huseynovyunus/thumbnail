@@ -92,7 +92,7 @@ const PLAN_CONTENT_LIMITS = {
     contentLimit:   { basic: 1000, pro: 5000, ultra: null, mega: null },
     paragraphLimit: { basic: 10,   pro: 30,   ultra: null,   mega: null },
     imageLimit:     { basic: 10,   pro: 30,   ultra: null,   mega: null },
-    linkLimit:      { basic: 10,   pro: 50,   ultra: null,   mega: null }
+    linkLimit:      { basic: 10,   pro: 30,   ultra: null,   mega: null }
 };
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
