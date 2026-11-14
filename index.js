@@ -231,8 +231,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }));
         });
 
-        // Kiçik bir əlavə pauza
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        // İstifadəsi:
+        await delay(1000); // 1 saniyə
+        await delay(2000); // 2 saniyə
 
         const extracted = await page.evaluate((pageUrl) => {
             const out = {
