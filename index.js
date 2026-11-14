@@ -225,13 +225,15 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         // 🛡️ Render 512MB RAM mühafizəsi
         await page.setRequestInterception(true);
         page.on('request', (req) => {
-            const resource = req.resourceType();
-            if (['image', 'media', 'font', 'stylesheet'].includes(resource)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
+             const resource = req.resourceType();
+             const reqUrl = req.url().toLowerCase();
+             const isAdUrl = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'].some(k => reqUrl.includes(k));
+             if (isAdUrl || ['image', 'media', 'font', 'stylesheet'].includes(resource)) {
+                 req.abort();
+             } else {
+                 req.continue();
+             }
+         });
 
         await page.goto(targetUrl, {
             waitUntil: 'networkidle2', // 👈 Cloudflare yoxlamasının tam tamamlanmasını gözləyir
