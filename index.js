@@ -164,6 +164,27 @@ function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) 
     return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
+// 🎬 Bura əlavə olunmalıdır (Çoxlu videoları/axınları embed formatına çevirən funksiya):
+function buildVideoEmbeds(videoSources, limit = 10) {
+    if (!videoSources || videoSources.length === 0) {
+        return { combinedHtml: '' };
+    }
+    
+    let combinedHtml = '';
+    const sources = videoSources.slice(0, limit);
+    
+    sources.forEach(src => {
+        const lowerSrc = src.toLowerCase();
+        if (lowerSrc.includes('youtube.com') || lowerSrc.includes('youtu.be') || lowerSrc.includes('vimeo.com')) {
+            combinedHtml += `<div class="web-video-embed" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><iframe width="100%" height="315" src="${src}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="display:block;border:0;"></iframe></div>`;
+        } else {
+            combinedHtml += `<div class="web-video-embed" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls style="width:100%;height:auto;display:block;background:#000;"><source src="${src}" type="video/mp4">Brauzeriniz video teqlini dəstəkləmir.</video></div>`;
+        }
+    });
+    
+    return { combinedHtml };
+}
+
 // --------------------------------------------------------------------
 // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
