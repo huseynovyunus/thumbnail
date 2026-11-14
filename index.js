@@ -338,42 +338,95 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             if (h1El) out.body.h1 = h1El.innerText.trim();
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            const contentContainer = document.querySelector('.article-body') || document.querySelector('.news-text') || document.querySelector('.post-content') || document.querySelector('.article-content') || document.querySelector('article') || document.body;
+            const contentSelectors = [
+    '[itemprop="articleBody"]',
+    '.article-body',
+    '.news-text',
+    '.post-content',
+    '.article-content',
+    'main',
+    '[role="main"]',
+    'article'
+];
+
+let contentContainer = null;
+
+for (const selector of contentSelectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+        contentContainer = element;
+        break;
+    }
+}
+
+contentContainer = contentContainer || document.body;
+
+if (contentContainer) {
+    const clone = contentContainer.cloneNode(true);
+
+    const removeSelectors = [
+        'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
+        '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
+        '.advertisement', '.social-share', '.tags', '.author-box',
+        '.read-more', '.other-news', '.news-box', 'figure'
+    ];
+    clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
+
+    const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
+    const seenTexts = new Set();
+
+    function pushCleanText(rawValue, minLength = 25) {
+        const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
+        if (!txt || txt.length < minLength) return;
+
+        if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
+
+        const upperTxt = txt.toUpperCase();
+        const lowerTxt = txt.toLowerCase();
+
+        const isJunk =
+            upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
+            lowerTxt.includes('hörmətli istifadəçi') ||
+            lowerTxt.includes('ödənişli') ||
+            lowerTxt.includes('qeydiyyatdan keçin') ||
+            lowerTxt.includes('t.me/') ||
+            lowerTxt.includes('instagram.com') ||
+            lowerTxt.includes('bizi') ||
+            lowerTxt.includes('izləyin');
+
+        if (isJunk || seenTexts.has(txt)) return;
+
+        seenTexts.add(txt);
+        out.body.paragraphs.push(txt);
+    }
+
+    // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
+    clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
+        if (node.closest(excludedSelector)) return;
+        const isHeading = /^H[1-3]$/.test(node.tagName);
+        pushCleanText(node.innerText, isHeading ? 8 : 30);
+    });
+
+    // 2. Xəbər/məqalə başlıqlarını keçidlərdən topla (AZƏRTAC, Hacker News və s.)
+    const headlineSelectors = [
+        'a[href*="/xeber/"]',
+        '.titleline > a',
+        'article h1 a',
+        'article h2 a',
+        'article h3 a',
+        '.news-item a[href]',
+        '.article-item a[href]',
+        '.post-item a[href]',
+        '.story a[href]',
+        '.card a[href]'
+    ].join(',');
+
+    clone.querySelectorAll(headlineSelectors).forEach(link => {
+        if (link.closest(excludedSelector)) return;
+        pushCleanText(link.innerText, 8);
+    });
+}
             
-            if (contentContainer) {
-                const clone = contentContainer.cloneNode(true);
-                
-                const removeSelectors = [
-                    'script', 'style', 'nav', 'header', 'footer', 'form', 'aside', 
-                    '.sidebar', '.related-news', '.widgets', '.banner', '.ads', 
-                    '.advertisement', '.social-share', '.tags', '.author-box', 
-                    '.read-more', '.other-news', '.news-box', 'ul', 'ol', 'figure'
-                ];
-                clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
-
-                clone.querySelectorAll('p').forEach(p => {
-                    const txt = p.innerText.trim();
-                    if (txt && txt.length > 30) {
-                        const upperTxt = txt.toUpperCase();
-                        const lowerTxt = txt.toLowerCase();
-                        
-                        const isJunk = 
-                            upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
-                            lowerTxt.includes('hörmətli istifadəçi') || 
-                            lowerTxt.includes('ödənişli') || 
-                            lowerTxt.includes('qeydiyyatdan keçin') ||
-                            lowerTxt.includes('t.me/') ||
-                            lowerTxt.includes('instagram.com') ||
-                            lowerTxt.includes('bizi') ||
-                            lowerTxt.includes('izləyin');
-
-                        if (!isJunk) {
-                            out.body.paragraphs.push(txt);
-                        }
-                    }
-                });
-            }
-
             if (!out.head.description && out.body.paragraphs.length > 0) {
                 out.head.description = out.body.paragraphs[0];
             }
