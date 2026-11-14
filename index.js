@@ -621,9 +621,10 @@ if (contentContainer) {
             : targetUrl;
 
         const hasVideo = extracted.body.videoSources.length > 0;
+        const videoEmbeds = buildVideoEmbeds(extracted.body.videoSources, 10);
         let embedHtml = '';
         if (hasVideo) {
-            embedHtml = `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;"><iframe src="${extracted.body.videoSources[0]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe></div>`;
+            embedHtml = videoEmbeds.combinedHtml;
         } else {
             embedHtml = generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
         }
