@@ -278,30 +278,45 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
          });
 
         await page.goto(targetUrl, {
-            waitUntil: 'networkidle2', // 👈 Cloudflare yoxlamasının tam tamamlanmasını gözləyir
-            timeout: 20000
-        });
-
-        // 🛡️ Sabit deyil, hər dəfə təsadüfi olaraq 4 ilə 6.5 saniyə arası gözlə
-        const randomDelay = Math.floor(Math.random() * 2000) + 4000;
-        await new Promise(resolve => setTimeout(resolve, randomDelay));
-        
-        // Daha real insan mouse və scroll hərəkətləri
-        await page.evaluate(() => {
-            window.scrollBy(0, Math.floor(Math.random() * 300) + 100);
-            window.dispatchEvent(new MouseEvent('mousemove', {
-                bubbles: true,
-                clientX: Math.floor(Math.random() * 500) + 100,
-                clientY: Math.floor(Math.random() * 400) + 100
-            }));
+            waitUntil: 'domcontentloaded',
+            timeout: 15000
         });
 
         const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-        // İstifadəsi:
-        await delay(1000); // 1 saniyə
-        await delay(2000); // 2 saniyə
+        // Qısa ilkin gözləmə (JS və DOM-un oturması üçün)
+        const quickDelay = Math.floor(Math.random() * 500) + 700; // 0.7 - 1.2 san
+        await delay(quickDelay);
 
+        // Cloudflare challenge düşübsə, yalnız o halda bir qədər də gözlə
+        const isChallenge = await page.evaluate(() => {
+            const t = (document.title || '').toLowerCase();
+            const b = (document.body?.innerText || '').toLowerCase();
+            return (
+                t.includes('just a moment') ||
+                t.includes('bir dakika lütfen') ||
+                t.includes('attention required') ||
+                b.includes('checking your browser') ||
+                b.includes('kötü niyetli botlara karşı')
+            );
+        });
+
+        if (isChallenge) {
+            await delay(3500);
+        }
+
+        // Qısa scroll və mouse hərəkəti
+        await page.evaluate(() => {
+            window.scrollBy(0, Math.floor(Math.random() * 250) + 100);
+            window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true,
+                clientX: Math.floor(Math.random() * 400) + 100,
+                clientY: Math.floor(Math.random() * 300) + 100
+            }));
+        });
+
+        await delay(300);
+        
         const extracted = await page.evaluate((pageUrl) => {
             const out = {
                 head: {
