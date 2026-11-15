@@ -643,11 +643,6 @@ if (contentContainer) {
          // 1. Əvvəlcə bütün paraqrafları birləşdiririk
          let fullText = extracted.body.paragraphs.join("\n\n");
 
-         // 2. Simvol limitinə görə kəsirik
-         if (limits.textLen !== null && fullText.length > limits.textLen) {
-             fullText = fullText.substring(0, limits.textLen) + "...";
-         }
-
          // 1. Əvvəlcə abzas limitini tətbiq et
          let finalParagraphs = limits.para === null
              ? extracted.body.paragraphs
