@@ -547,29 +547,99 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }
 
             const seenImages = new Set();
-            const ogImg = out.head.open_graph.image || out.head.twitter.image;
-            if (ogImg) {
-                try {
-                    const absoluteOg = new URL(ogImg, pageUrl).href;
-                    seenImages.add(absoluteOg);
-                    out.body.images.push(absoluteOg);
-                } catch {
-                    seenImages.add(ogImg);
-                    out.body.images.push(ogImg);
-                }
-            }
 
-            document.querySelectorAll('img').forEach(img => {
-                const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-original');
-                if (!src) return;
+            const adOrUiSelector = [
+                'header', 'nav', 'footer', 'aside',
+                '[class*="banner"]', '[id*="banner"]',
+                '[class*="advert"]', '[id*="advert"]',
+                '[class*="sponsor"]', '[id*="sponsor"]',
+                '[class*="social"]', '[class*="share"]',
+                '[class*="sidebar"]', '[class*="related"]',
+                '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
+            ].join(',');
+
+            const isJunkImageUrl = (urlStr) => {
+                const lower = (urlStr || '').toLowerCase();
+                return [
+                    'tracker', 'pixel', '.svg', 'placeholder', 'no+thumbnail',
+                    '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
+                    'doubleclick', 'googlesyndication', 'catfish',
+                    'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
+                    'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/'
+                ].some(k => lower.includes(k));
+            };
+
+            const isAdOrUiImage = (imgEl) => {
+                if (!imgEl) return false;
+
+                if (typeof imgEl.matches === 'function' && imgEl.matches(adOrUiSelector)) {
+                    return true;
+                }
+
+                if (typeof imgEl.closest === 'function' && imgEl.closest(adOrUiSelector)) {
+                    return true;
+                }
+
+                const w = parseInt(imgEl.getAttribute('width'), 10);
+                const h = parseInt(imgEl.getAttribute('height'), 10);
+                if ((!isNaN(w) && w > 0 && w <= 60) || (!isNaN(h) && h > 0 && h <= 60)) {
+                    return true;
+                }
+
+                return false;
+            };
+
+            const extractImgSrc = (imgEl) => {
+                const direct =
+                    imgEl.getAttribute('src') ||
+                    imgEl.getAttribute('data-src') ||
+                    imgEl.getAttribute('data-lazy-src') ||
+                    imgEl.getAttribute('data-original');
+
+                if (direct) return direct.trim();
+
+                const srcset = imgEl.getAttribute('srcset') || imgEl.getAttribute('data-srcset');
+                if (srcset) {
+                    const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
+                    if (firstCandidate) return firstCandidate;
+                }
+
+                return '';
+            };
+
+            const addImageFromEl = (imgEl) => {
+                if (isAdOrUiImage(imgEl)) return;
+                const src = extractImgSrc(imgEl);
+                if (!src || src.startsWith('data:image/')) return;
                 try {
                     const abs = new URL(src, pageUrl).href;
-                    if (!abs.includes('tracker') && !abs.includes('pixel') && !abs.includes('.svg') && !seenImages.has(abs)) {
+                    if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
                         seenImages.add(abs);
                         out.body.images.push(abs);
                     }
                 } catch {}
-            });
+            };
+
+            const ogImg = out.head.open_graph.image || out.head.twitter.image;
+            if (ogImg) {
+                try {
+                    const absoluteOg = new URL(ogImg, pageUrl).href;
+                    if (!isJunkImageUrl(absoluteOg)) {
+                        seenImages.add(absoluteOg);
+                        out.body.images.push(absoluteOg);
+                    }
+                } catch {}
+            }
+
+            // 1. Əvvəlcə əsas məqalə konteynerindəki şəkilləri topla
+            if (contentContainer && contentContainer !== document.body) {
+                contentContainer.querySelectorAll('img').forEach(addImageFromEl);
+            }
+
+            // 2. Əgər hələ də şəkil azdırsa, səhifədəki digər uyğun şəkilləri əlavə et
+            if (out.body.images.length < 3) {
+                document.querySelectorAll('img').forEach(addImageFromEl);
+            }
 
             const seenLinks = new Set();
             document.querySelectorAll('a').forEach(a => {
