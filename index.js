@@ -634,35 +634,32 @@ if (contentContainer) {
         }
 
         const limits = {
-             para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
-             img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
-             link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
-             textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
-         };
+            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
+            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
+            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
+            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
+        };
 
-         // 1. Əvvəlcə bütün paraqrafları birləşdiririk
-         let fullText = extracted.body.paragraphs.join("\n\n");
+        // 1. Əvvəlcə abzas limitini tətbiq et
+        let finalParagraphs = limits.para === null
+            ? extracted.body.paragraphs
+            : extracted.body.paragraphs.slice(0, limits.para);
 
-         // 1. Əvvəlcə abzas limitini tətbiq et
-         let finalParagraphs = limits.para === null
-             ? extracted.body.paragraphs
-             : extracted.body.paragraphs.slice(0, limits.para);
+        // 2. Mətn yarat
+        let fullText = finalParagraphs.join('\n\n');
 
-         // 2. Mətn yarat
-         let fullText = finalParagraphs.join('\n\n');
+        // 3. Simvol limitini tətbiq et
+        if (limits.textLen !== null && fullText.length > limits.textLen) {
+            fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
+        }
 
-         // 3. Simvol limitini tətbiq et
-         if (limits.textLen !== null && fullText.length > limits.textLen) {
-             fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
-         }
+        // 4. Abzasları pageContent ilə eyniləşdir
+        finalParagraphs = fullText
+            ? fullText.split('\n\n')
+            : [];
 
-         // 4. Abzasları pageContent ilə eyniləşdir
-         finalParagraphs = fullText
-             ? fullText.split('\n\n')
-             : [];
-
-         const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
-         const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
+        const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
+        const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
 
         const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
         const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
