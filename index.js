@@ -553,14 +553,14 @@ if (contentContainer) {
                          lowerSrc.includes('.mpd') ||
                          lowerSrc.includes('baku.tv')
                      ) {
-                         pushUniqueVideo(src);
+                         pushUniqueVideo(src, iframe);
                      }
                  }
              });
 
              document.querySelectorAll('video, video source').forEach(v => {
                  const src = v.getAttribute('src') || v.getAttribute('data-src');
-                 pushUniqueVideo(src);
+                 pushUniqueVideo(src, v);
              });
 
              // ==========================================
@@ -590,7 +590,7 @@ if (contentContainer) {
                      el.getAttribute('data-stream') ||
                      el.getAttribute('data-hls');
                  if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
-                     pushUniqueVideo(src);
+                     pushUniqueVideo(src, el);
                  }
              });
 
