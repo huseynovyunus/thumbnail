@@ -648,10 +648,23 @@ if (contentContainer) {
              fullText = fullText.substring(0, limits.textLen) + "...";
          }
 
-         // 3. Paraqraf limitini tətbiq edirik (YALNIZ BİR DƏFƏ təyin olunur)
-         const finalParagraphs = limits.para === null 
-             ? extracted.body.paragraphs 
+         // 1. Əvvəlcə abzas limitini tətbiq et
+         let finalParagraphs = limits.para === null
+             ? extracted.body.paragraphs
              : extracted.body.paragraphs.slice(0, limits.para);
+
+         // 2. Mətn yarat
+         let fullText = finalParagraphs.join('\n\n');
+
+         // 3. Simvol limitini tətbiq et
+         if (limits.textLen !== null && fullText.length > limits.textLen) {
+             fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
+         }
+
+         // 4. Abzasları pageContent ilə eyniləşdir
+         finalParagraphs = fullText
+             ? fullText.split('\n\n')
+             : [];
 
          const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
          const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
