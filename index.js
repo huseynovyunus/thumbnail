@@ -706,8 +706,8 @@ if (contentContainer) {
             deep_data: {
                 plan: plan,
                 error: null,
-                pageContent: cleanText(fullText),
-                paragraphs: finalParagraphs.map(cleanText),
+                pageContent: fullText,
+                paragraphs: finalParagraphs,
                 images: finalImages,
                 links: finalLinks,
                 videoSources: extracted.body.videoSources,
