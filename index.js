@@ -164,25 +164,67 @@ function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) 
     return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
-// 🎬 Bura əlavə olunmalıdır (Çoxlu videoları/axınları embed formatına çevirən funksiya):
-function buildVideoEmbeds(videoSources, limit = 10) {
-    if (!videoSources || videoSources.length === 0) {
-        return { combinedHtml: '' };
-    }
-    
-    let combinedHtml = '';
-    const sources = videoSources.slice(0, limit);
-    
-    sources.forEach(src => {
-        const lowerSrc = src.toLowerCase();
-        if (lowerSrc.includes('youtube.com') || lowerSrc.includes('youtu.be') || lowerSrc.includes('vimeo.com')) {
-            combinedHtml += `<div class="web-video-embed" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><iframe width="100%" height="315" src="${src}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="display:block;border:0;"></iframe></div>`;
-        } else {
-            combinedHtml += `<div class="web-video-embed" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls style="width:100%;height:auto;display:block;background:#000;"><source src="${src}" type="video/mp4">Brauzeriniz video teqlini dəstəkləmir.</video></div>`;
+function normalizeEmbedUrl(rawUrl) {
+    const clean = String(rawUrl || '').replace(/\\/g, '/').trim();
+    if (!clean || /^(blob:|javascript:|data:)/i.test(clean)) return '';
+    try {
+        const u = new URL(clean);
+        const host = u.hostname.toLowerCase();
+        if (host.includes('youtu.be')) {
+            const vid = u.pathname.replace(/^\/+/, '').split('/')[0];
+            if (vid) return `https://www.youtube.com/embed/${vid}`;
         }
-    });
-    
-    return { combinedHtml };
+        if (host.includes('youtube.com') && u.pathname === '/watch') {
+            const vid = u.searchParams.get('v');
+            if (vid) return `https://www.youtube.com/embed/${vid}`;
+        }
+        return u.href;
+    } catch {
+        return clean;
+    }
+}
+
+function escapeHtmlAttr(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function buildVideoEmbeds(videoSources = [], limit = 10) {
+    if (!Array.isArray(videoSources) || videoSources.length === 0) {
+        return { combinedHtml: '', items: [] };
+    }
+
+    const items = [];
+    for (const rawUrl of videoSources) {
+        if (items.length >= limit) break;
+        const normalizedUrl = normalizeEmbedUrl(rawUrl);
+        if (!normalizedUrl) continue;
+
+        const safeUrl = escapeHtmlAttr(normalizedUrl);
+        const isDirectMp4 = /\.mp4(\?.*)?$/i.test(normalizedUrl);
+        const isHlsStream = /\.m3u8(\?.*)?$/i.test(normalizedUrl);
+        const type = isDirectMp4 ? 'mp4' : isHlsStream ? 'hls' : 'iframe';
+        const index = items.length;
+
+        let html = '';
+        if (isDirectMp4) {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls preload="metadata" src="${safeUrl}" style="width:100%;height:auto;display:block;background:#000;"></video></div>`;
+        } else if (isHlsStream) {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#0f172a;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:6px;">HLS Video Axını (.m3u8)</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;word-break:break-all;">${safeUrl}</a></div>`;
+        } else {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:12px 0;background:#000;"><iframe src="${safeUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe></div>`;
+        }
+
+        items.push({ index: index + 1, url: normalizedUrl, type, html });
+    }
+
+    return {
+        combinedHtml: items.map(item => item.html).join('\n'),
+        items
+    };
 }
 
 // --------------------------------------------------------------------
@@ -297,14 +339,21 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
                 if (!name || !content) return;
 
-                const lowerName = name.toLowerCase();
-                out.head.all_meta[name] = content;
+               const lowerName = name.toLowerCase();
+                 const cleanContent = lowerName.includes('image') || lowerName.includes('url')
+                     ? content.replace(/\\/g, '/')
+                     : content;
 
-                if (lowerName.startsWith('og:')) {
-                    out.head.open_graph[lowerName.replace(/^og:/, '')] = content;
-                }
-                if (lowerName.startsWith('twitter:')) {
-                    out.head.twitter[lowerName.replace(/^twitter:/, '')] = content;
+                 if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
+                     out.head.all_meta[name] = cleanContent;
+                 }
+
+                 if (lowerName.startsWith('og:')) {
+                     out.head.open_graph[lowerName.replace(/^og:/, '')] = cleanContent;
+                 }
+                 if (lowerName.startsWith('twitter:')) {
+                     out.head.twitter[lowerName.replace(/^twitter:/, '')] = cleanContent;
+                 }
                 }
                 if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
                     out.head.description = content;
