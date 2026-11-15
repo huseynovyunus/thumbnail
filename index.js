@@ -410,93 +410,122 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
             const contentSelectors = [
-    '[itemprop="articleBody"]',
-    '.article-body',
-    '.news-text',
-    '.post-content',
-    '.article-content',
-    'main',
-    '[role="main"]',
-    'article'
-];
+                '[itemprop="articleBody"]',
+                '.article-body',
+                '.article_body',
+                '.news-text',
+                '.news_text',
+                '.news-inner',
+                '.news-content',
+                '.post-content',
+                '.article-content',
+                '.entry-content',
+                '.single-content',
+                '.content-text',
+                'main',
+                '[role="main"]',
+                'article'
+            ];
 
-let contentContainer = null;
+            let contentContainer = null;
+            let bestTextLength = 0;
 
-for (const selector of contentSelectors) {
-    const element = document.querySelector(selector);
-    if (element) {
-        contentContainer = element;
-        break;
-    }
-}
+            for (const selector of contentSelectors) {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const txtLen = (el.innerText || '').trim().length;
+                    if (txtLen > bestTextLength && txtLen >= 150) {
+                        bestTextLength = txtLen;
+                        contentContainer = el;
+                    }
+                });
+                if (contentContainer && bestTextLength >= 250 && !['main', '[role="main"]', 'article'].includes(selector)) {
+                    break;
+                }
+            }
 
-contentContainer = contentContainer || document.body;
+            contentContainer = contentContainer || document.body;
 
-if (contentContainer) {
-    const clone = contentContainer.cloneNode(true);
+            if (contentContainer) {
+                const clone = contentContainer.cloneNode(true);
 
-    const removeSelectors = [
-        'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
-        '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
-        '.advertisement', '.social-share', '.tags', '.author-box',
-        '.read-more', '.other-news', '.news-box', 'figure'
-    ];
-    clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
+                const removeSelectors = [
+                    'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
+                    '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
+                    '.advertisement', '.social-share', '.tags', '.author-box',
+                    '.read-more', '.other-news', '.news-box', 'figure',
+                    '[class*="related"]', '[class*="share"]', '[class*="social"]',
+                    '[class*="banner"]', '[class*="advert"]', '.poll', '.polls'
+                ];
+                clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
 
-    const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
-    const seenTexts = new Set();
+                const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
+                const seenTexts = new Set();
 
-    function pushCleanText(rawValue, minLength = 25) {
-        const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
-        if (!txt || txt.length < minLength) return;
+                function pushCleanText(rawValue, minLength = 25) {
+                    const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
+                    if (!txt || txt.length < minLength) return;
 
-        if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
+                    if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
 
-        const upperTxt = txt.toUpperCase();
-        const lowerTxt = txt.toLowerCase();
+                    const upperTxt = txt.toUpperCase();
+                    const lowerTxt = txt.toLowerCase();
 
-        const isJunk =
-            upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
-            lowerTxt.includes('hörmətli istifadəçi') ||
-            lowerTxt.includes('ödənişli') ||
-            lowerTxt.includes('qeydiyyatdan keçin') ||
-            lowerTxt.includes('t.me/') ||
-            lowerTxt.includes('instagram.com') ||
-            lowerTxt.includes('bizi') ||
-            lowerTxt.includes('izləyin');
+                    const isJunk =
+                        upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
+                        lowerTxt.includes('hörmətli istifadəçi') ||
+                        lowerTxt.includes('ödənişli') ||
+                        lowerTxt.includes('qeydiyyatdan keçin') ||
+                        lowerTxt.includes('t.me/') ||
+                        lowerTxt.includes('instagram.com') ||
+                        lowerTxt.includes('bizi') ||
+                        lowerTxt.includes('izləyin');
 
-        if (isJunk || seenTexts.has(txt)) return;
+                    if (isJunk || seenTexts.has(txt)) return;
 
-        seenTexts.add(txt);
-        out.body.paragraphs.push(txt);
-    }
+                    seenTexts.add(txt);
+                    out.body.paragraphs.push(txt);
+                }
 
-    // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
-    clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
-        if (node.closest(excludedSelector)) return;
-        const isHeading = /^H[1-3]$/.test(node.tagName);
-        pushCleanText(node.innerText, isHeading ? 8 : 30);
-    });
+                // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
+                clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
+                    if (node.closest(excludedSelector)) return;
+                    const isHeading = /^H[1-3]$/.test(node.tagName);
+                    pushCleanText(node.innerText, isHeading ? 8 : 30);
+                });
 
-    // 2. Xəbər/məqalə başlıqlarını keçidlərdən topla (AZƏRTAC, Hacker News və s.)
-    const headlineSelectors = [
-        'a[href*="/xeber/"]',
-        '.titleline > a',
-        'article h1 a',
-        'article h2 a',
-        'article h3 a',
-        '.news-item a[href]',
-        '.article-item a[href]',
-        '.post-item a[href]',
-        '.story a[href]',
-        '.card a[href]'
-    ].join(',');
+                // 2. Əgər mətn <p> əvəzinə <br> / <div> ilə bölünübsə
+                if (out.body.paragraphs.length < 2) {
+                    const htmlChunks = clone.innerHTML
+                        .replace(/<br\s*\/?>/gi, '\n')
+                        .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, '\n');
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = htmlChunks;
+                    const lines = (tempDiv.innerText || tempDiv.textContent || '').split('\n');
+                    lines.forEach(line => pushCleanText(line, 30));
+                }
 
-    clone.querySelectorAll(headlineSelectors).forEach(link => {
-        if (link.closest(excludedSelector)) return;
-        pushCleanText(link.innerText, 8);
-    });
-}
+                // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
+                if (out.body.paragraphs.length === 0) {
+                    const headlineSelectors = [
+                        'a[href*="/xeber/"]',
+                        '.titleline > a',
+                        'article h1 a',
+                        'article h2 a',
+                        'article h3 a',
+                        '.news-item a[href]',
+                        '.article-item a[href]',
+                        '.post-item a[href]',
+                        '.story a[href]',
+                        '.card a[href]'
+                    ].join(',');
+
+                    clone.querySelectorAll(headlineSelectors).forEach(link => {
+                        if (link.closest(excludedSelector)) return;
+                        pushCleanText(link.innerText, 8);
+                    });
+                }
+            }
             
             if (!out.head.description && out.body.paragraphs.length > 0) {
                 out.head.description = out.body.paragraphs[0];
