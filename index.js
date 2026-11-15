@@ -334,40 +334,39 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }
 
             document.querySelectorAll('meta').forEach(meta => {
-                const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
-                const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
+    const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
+    const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
 
-                if (!name || !content) return;
+    if (!name || !content) return;
 
-               const lowerName = name.toLowerCase();
-                 const cleanContent = lowerName.includes('image') || lowerName.includes('url')
-                     ? content.replace(/\\/g, '/')
-                     : content;
+    const lowerName = name.toLowerCase();
+    const cleanContent = lowerName.includes('image') || lowerName.includes('url')
+        ? content.replace(/\\/g, '/')
+        : content;
 
-                 if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
-                     out.head.all_meta[name] = cleanContent;
-                 }
+    if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
+        out.head.all_meta[name] = cleanContent;
+    }
 
-                 if (lowerName.startsWith('og:')) {
-                     out.head.open_graph[lowerName.replace(/^og:/, '')] = cleanContent;
-                 }
-                 if (lowerName.startsWith('twitter:')) {
-                     out.head.twitter[lowerName.replace(/^twitter:/, '')] = cleanContent;
-                 }
-                }
-                if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
-                    out.head.description = content;
-                }
-                if (['og:site_name', 'application-name', 'publisher'].includes(lowerName) && !out.head.site_name) {
-                    out.head.site_name = content;
-                }
-                if (['author', 'article:author', 'twitter:creator'].includes(lowerName) && !out.head.author) {
-                    out.head.author = content;
-                }
-                if (lowerName === 'keywords' && !out.head.keywords) {
-                    out.head.keywords = content;
-                }
-            });
+    if (lowerName.startsWith('og:')) {
+        out.head.open_graph[lowerName.replace(/^og:/, '')] = cleanContent;
+    }
+    if (lowerName.startsWith('twitter:')) {
+        out.head.twitter[lowerName.replace(/^twitter:/, '')] = cleanContent;
+    }
+    if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
+        out.head.description = cleanContent;
+    }
+    if (['og:site_name', 'application-name', 'publisher'].includes(lowerName) && !out.head.site_name) {
+        out.head.site_name = cleanContent;
+    }
+    if (['author', 'article:author', 'twitter:creator'].includes(lowerName) && !out.head.author) {
+        out.head.author = cleanContent;
+    }
+    if (lowerName === 'keywords' && !out.head.keywords) {
+        out.head.keywords = cleanContent;
+    }
+});
 
             const canonicalEl = document.querySelector('link[rel="canonical"]');
             if (canonicalEl && canonicalEl.getAttribute('href')) {
