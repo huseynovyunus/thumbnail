@@ -841,14 +841,12 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
             pageTitle.includes("Access Denied")
         ) {
             return {
-                success: false,
-                code: 403,
-                status: "error",
-                error: "Target website is protected by Cloudflare or bot verification. Access blocked.",
-                name: pageTitle,
-                description: pageDesc,
-                site_name: new URL(targetUrl).hostname,
-                is_video: false
+                const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
+                const sliceLinks = (arr) => (limits.link === null ? arr : arr.slice(0, limits.link));
+                const finalArticleLinks = sliceLinks(extracted.body.article_links);
+                const finalRelatedLinks = sliceLinks(extracted.body.related_links);
+                const finalTagLinks = sliceLinks(extracted.body.tag_links);
+                const finalExternalLinks = sliceLinks(extracted.body.external_links);
             };
         }
 
