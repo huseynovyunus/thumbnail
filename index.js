@@ -910,10 +910,28 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
             ? fullText.split('\n\n')
             : [];
 
-        const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
-        const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
+        const sliceArr = (arr, lim) => (lim === null ? arr : arr.slice(0, lim));
+        const finalImages = sliceArr(extracted.body.images, limits.img);
+        const finalMainImage = extracted.body.main_image || (finalImages.length > 0 ? finalImages[0] : "");
+        const finalNewsImages = sliceArr(extracted.body.news_images, limits.img);
+        const finalAudioImages = sliceArr(extracted.body.audio_images, limits.img);
+        const finalVideoImages = sliceArr(extracted.body.video_images, limits.img);
+        const finalRelatedImages = sliceArr(extracted.body.related_images, limits.img);
 
-        const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
+        const finalArticleLinks = sliceArr(extracted.body.article_links, limits.link);
+        const finalRelatedLinks = sliceArr(extracted.body.related_links, limits.link);
+        const finalTagLinks = sliceArr(extracted.body.tag_links, limits.link);
+        const finalExternalLinks = sliceArr(extracted.body.external_links, limits.link);
+
+        const allCleanLinks = [
+            ...extracted.body.article_links,
+            ...extracted.body.related_links,
+            ...extracted.body.tag_links,
+            ...extracted.body.external_links
+        ];
+        const finalLinks = sliceArr(allCleanLinks, limits.link);
+
+        const thumbnail = finalMainImage || extracted.head.open_graph.image || extracted.head.twitter.image || null;
         const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
         const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
         const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
@@ -961,15 +979,24 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
                 all_meta_tags: extracted.head.all_meta
             },
             deep_data: {
-                plan: plan,
-                error: null,
-                pageContent: fullText,
-                paragraphs: finalParagraphs,
-                images: finalImages,
-                links: finalLinks,
-                videoSources: extracted.body.videoSources,
-                has_video_sources: hasVideo
-            }
+                 plan: plan,
+                 error: null,
+                 pageContent: fullText,
+                 paragraphs: finalParagraphs,
+                 images: finalImages,
+                 main_image: finalMainImage,
+                 news_images: finalNewsImages,
+                 audio_images: finalAudioImages,
+                 video_images: finalVideoImages,
+                 related_images: finalRelatedImages,
+                 links: finalLinks,
+                 article_links: finalArticleLinks,
+                 related_links: finalRelatedLinks,
+                 tag_links: finalTagLinks,
+                 external_links: finalExternalLinks,
+                 videoSources: extracted.body.videoSources,
+                 has_video_sources: hasVideo
+             }
         };
 
     } catch (err) {
