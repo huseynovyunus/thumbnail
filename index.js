@@ -661,19 +661,57 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
 }
 
             const seenLinks = new Set();
-            document.querySelectorAll('a').forEach(a => {
-                const href = a.getAttribute('href');
-                const text = a.innerText.trim();
-                if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-                try {
-                    const abs = new URL(href, pageUrl).href;
-                    if (!seenLinks.has(abs)) {
-                        seenLinks.add(abs);
-                        out.body.links.push({ text: text || 'Keçid', url: abs });
-                    }
-                } catch {}
-            });
+             const excludedLinkContainers = [
+                 'header', 'nav', 'footer', 'aside',
+                 '[role="navigation"]', '[aria-hidden="true"]',
+                 '[class*="sidebar"]', '[class*="banner"]', '[class*="advert"]',
+                 '[class*="social"]', '[class*="share"]', '[class*="menu"]',
+                 '[class*="lang"]', '[class*="footer"]', '[class*="header"]',
+                 '[class*="related"]', '[class*="other-news"]'
+             ].join(',');
 
+             const junkLinkPatterns = [
+                 'liveinternet.ru', 'counter.yadro.ru', 'metrix.az',
+                 'facebook.com/sharer', 'twitter.com/intent', 'x.com/intent',
+                 't.me/share', 'api.whatsapp.com/send', 'wa.me/',
+                 'coresoft.az'
+             ];
+
+             const linkRoot = (contentContainer && contentContainer !== document.body)
+                 ? contentContainer
+                 : document;
+
+             linkRoot.querySelectorAll('a').forEach(a => {
+                 if (a.closest(excludedLinkContainers)) return;
+
+                 const href = (a.getAttribute('href') || '').trim();
+                 const text = (a.innerText || '').replace(/\s+/g, ' ').trim();
+
+                 if (
+                     !href ||
+                     href.startsWith('#') ||
+                     href.startsWith('javascript:') ||
+                     href.startsWith('mailto:') ||
+                     href.startsWith('tel:')
+                 ) return;
+
+                 if (!text || text.length < 3) return;
+                 if (/^(keçid|daha ətraflı|read more|bütün xəbərlər|çox oxunanlar|əlaqə)$/i.test(text)) return;
+
+                 try {
+                     const abs = new URL(href, pageUrl).href;
+                     const lowerAbs = abs.toLowerCase();
+
+                     if (junkLinkPatterns.some(pattern => lowerAbs.includes(pattern))) return;
+                     if (abs === pageUrl) return;
+
+                     if (!seenLinks.has(abs)) {
+                         seenLinks.add(abs);
+                         out.body.links.push({ text: text, url: abs });
+                     }
+                 } catch {}
+             });
+            
             const toAbsoluteVideoUrl = (rawSrc) => {
                  if (!rawSrc || typeof rawSrc !== 'string') return null;
                  const trimmed = rawSrc.trim();
