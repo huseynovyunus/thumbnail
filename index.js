@@ -334,6 +334,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 body: {
                     h1: '',
                     paragraphs: [],
+                    articles: [],
                     images: [],
                     main_image: '',
                     news_images: [],
@@ -663,16 +664,142 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 }
             });
 
+                // =========================================================
+            // 2. XƏBƏR KARTLARI (TITLE + URL + IMAGE + DESCRIPTION), ŞƏKİLLƏR VƏ LİNKLƏR
+            // =========================================================
+            const seenGlobalImages = new Set();
+            const seenFileNames = new Set();
+
+            const normalizeImgFileKey = (urlStr) => {
+                try {
+                    const u = new URL(urlStr, pageUrl);
+                    return u.pathname.split('/').pop()?.toLowerCase() || u.href;
+                } catch {
+                    return urlStr;
+                }
+            };
+
+            const isJunkImageUrl = (urlStr) => {
+                const lower = (urlStr || '').toLowerCase();
+                return [
+                    'tracker', 'pixel', 'counter.', 'yadro.ru', 'metrix.az',
+                    '/storage/authors/', '/authors/', '/avatar',
+                    '.svg', 'placeholder', 'no+thumbnail',
+                    '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
+                    'doubleclick', 'googlesyndication', 'catfish',
+                    'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
+                    'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/',
+                    'logo.', '/logo'
+                ].some(k => lower.includes(k));
+            };
+
+            const isAdOrTinyImage = (el) => {
+                if (!el) return false;
+                const adSelector = [
+                    'header', 'nav', 'footer',
+                    '[class*="banner"]', '[id*="banner"]',
+                    '[class*="advert"]', '[id*="advert"]',
+                    '[class*="sponsor"]', '[id*="sponsor"]',
+                    '[class*="social"]', '[class*="share"]',
+                    '[class*="author"]', '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
+                ].join(',');
+                if (el.matches?.(adSelector) || el.closest?.(adSelector)) return true;
+
+                const w = parseInt(el.getAttribute('width'), 10);
+                const h = parseInt(el.getAttribute('height'), 10);
+                if ((!isNaN(w) && w > 0 && w <= 50) || (!isNaN(h) && h > 0 && h <= 50)) return true;
+                return false;
+            };
+
+            const extractImgSrc = (el) => {
+                if (!el) return '';
+                const direct =
+                    el.getAttribute('src') ||
+                    el.getAttribute('data-src') ||
+                    el.getAttribute('data-original') ||
+                    el.getAttribute('data-lazy-src') ||
+                    el.getAttribute('data-lazy') ||
+                    el.getAttribute('data-bg');
+                if (direct) return direct.trim();
+
+                const srcset = el.getAttribute('srcset') || el.getAttribute('data-srcset');
+                if (srcset) {
+                    const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
+                    if (firstCandidate) return firstCandidate;
+                }
+
+                const styleAttr = el.getAttribute('style') || '';
+                const bgMatch = styleAttr.match(/background-image\s*:\s*url\(['"]?([^'")]+)['"]?\)/i);
+                if (bgMatch && bgMatch[1]) return bgMatch[1].trim();
+
+                return '';
+            };
+
+            const resolveCleanImageUrl = (rawUrl) => {
+                if (!rawUrl || rawUrl.startsWith('data:image/')) return '';
+                try {
+                    const abs = new URL(rawUrl, pageUrl).href;
+                    if (isJunkImageUrl(abs)) return '';
+                    return abs;
+                } catch {
+                    return '';
+                }
+            };
+
+            const addCategorizedImage = (rawUrl, targetArray, alsoAddToMainList = true) => {
+                const abs = resolveCleanImageUrl(rawUrl);
+                if (!abs) return '';
+
+                if (abs.toLowerCase().includes('/resize/')) {
+                    const bigCandidate = abs.replace(/\/resize\//i, '/big/');
+                    if (seenGlobalImages.has(bigCandidate)) return bigCandidate;
+                }
+
+                const fileKey = normalizeImgFileKey(abs);
+                if (!seenGlobalImages.has(abs) && !seenFileNames.has(fileKey)) {
+                    seenGlobalImages.add(abs);
+                    seenFileNames.add(fileKey);
+                    targetArray.push(abs);
+                    if (alsoAddToMainList && !out.body.images.includes(abs)) {
+                        out.body.images.push(abs);
+                    }
+                }
+                return abs;
+            };
+
+            // 1. MAIN IMAGE
+            const ogImg = out.head.open_graph.image || out.head.twitter.image;
+            if (ogImg) {
+                const absMain = resolveCleanImageUrl(ogImg);
+                if (absMain) {
+                    out.body.main_image = absMain;
+                    seenGlobalImages.add(absMain);
+                    seenFileNames.add(normalizeImgFileKey(absMain));
+                    out.body.images.push(absMain);
+                }
+            }
+
+            // 2. VIDEO IMAGES
+            document.querySelectorAll('video[poster]').forEach(v => {
+                addCategorizedImage(v.getAttribute('poster'), out.body.video_images, false);
+            });
+            document.querySelectorAll('iframe').forEach(iframe => {
+                const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+                const ytMatch = src.match(/(?:youtube\.com\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                if (ytMatch && ytMatch[1]) {
+                    addCategorizedImage(`https://i.ytimg.com/vi/${ytMatch[1]}/hqdefault.jpg`, out.body.video_images, false);
+                }
+            });
+
             // 3. AUDIO IMAGES
             document.querySelectorAll('[class*="audio"], [class*="podcast"], [class*="player"], [id*="audio"]').forEach(audioBox => {
-                audioBox.querySelectorAll('img').forEach(img => {
+                audioBox.querySelectorAll('img, [style*="background-image"]').forEach(img => {
                     if (!isAdOrTinyImage(img)) {
                         addCategorizedImage(extractImgSrc(img), out.body.audio_images, false);
                     }
                 });
             });
 
-            // 4. NEWS & RELATED IMAGES
             const isHomePage = (() => {
                 try {
                     const p = new URL(pageUrl).pathname;
@@ -681,19 +808,19 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             })();
 
             const relatedSelector = 'aside, [class*="related"], [class*="other-news"], [class*="sidebar"], [class*="more-news"], [class*="similar"]';
-            const scanImageRoot = document.querySelector('main, [role="main"], article, #content, .content, .container') || document.body;
 
-            scanImageRoot.querySelectorAll('img').forEach(img => {
-                if (isAdOrTinyImage(img)) return;
-                const src = extractImgSrc(img);
+            // Bütün səhifədəki şəkilləri (həm <img>, həm background-image) topla
+            document.body.querySelectorAll('img, [style*="background-image"], [data-bg]').forEach(el => {
+                if (isAdOrTinyImage(el)) return;
+                const src = extractImgSrc(el);
                 if (!src) return;
 
-                const parentLink = img.closest('a[href]');
+                const parentLink = el.closest('a[href]');
                 const linkHref = parentLink ? (parentLink.getAttribute('href') || '') : '';
-                const isGalleryImage = /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(linkHref) || img.closest('[class*="gallery"], [class*="slider"], [class*="swiper"], [class*="fancybox"], [data-fancybox]');
+                const isGalleryImage = /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(linkHref) || el.closest('[class*="gallery"], [class*="slider"], [class*="swiper"], [class*="fancybox"], [data-fancybox]');
                 const isInsideOtherArticleLink = !isHomePage && parentLink && !isGalleryImage;
 
-                if (!isHomePage && (img.closest(relatedSelector) || isInsideOtherArticleLink)) {
+                if (!isHomePage && (el.closest(relatedSelector) || isInsideOtherArticleLink)) {
                     addCategorizedImage(src, out.body.related_images, false);
                 } else {
                     addCategorizedImage(src, out.body.news_images, true);
@@ -705,9 +832,10 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }
 
             // =========================================================
-            // 3. LİNKLƏRİN 4 KATEQORİYAYA BÖLÜNMƏSİ
+            // 3. LİNKLƏR VƏ STRUKTURLAŞDIRILMIŞ XƏBƏR KARTLARI
             // =========================================================
             const seenLinks = new Set();
+            const seenArticleUrls = new Set();
             const pageHost = (() => {
                 try { return new URL(pageUrl).hostname.replace(/^www\./, '').toLowerCase(); }
                 catch { return ''; }
@@ -733,13 +861,12 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 'coresoft.az'
             ];
 
-            const scanRoot = document.querySelector('main, [role="main"], article, #content, .content, .container') || document.body;
-
-            scanRoot.querySelectorAll('a').forEach(a => {
+            // Birbaşa document.body üzərindən bütün linkləri skan et (yarımçıq .container tələsindən qaçmaq üçün)
+            document.body.querySelectorAll('a[href]').forEach(a => {
                 if (a.closest(excludedLinkContainers)) return;
 
                 const href = (a.getAttribute('href') || '').trim();
-                const text = (a.innerText || a.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+                const rawText = (a.innerText || a.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
 
                 if (
                     !href ||
@@ -749,6 +876,100 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     href.startsWith('tel:')
                 ) return;
 
+                if (rawText && navTextBlockRegex.test(rawText)) return;
+
+                try {
+                    const parsedLink = new URL(href, pageUrl);
+                    const abs = parsedLink.href;
+                    const lowerAbs = abs.toLowerCase();
+                    const linkHost = parsedLink.hostname.replace(/^www\./, '').toLowerCase();
+                    const linkPath = parsedLink.pathname.toLowerCase();
+
+                    if (abs === pageUrl) return;
+                    if (junkLinkPatterns.some(pattern => lowerAbs.includes(pattern))) return;
+                    if (linkHost === pageHost && navPathBlockRegex.test(linkPath)) return;
+
+                    // Kart konteynerini tap (xəbər bloku)
+                    const cardEl = a.closest('article, .news-item, .article-item, .post-item, .story, .card, [class*="news"], [class*="item"], li, .col-md-3, .col-md-4, .col-md-6') || a.parentElement;
+
+                    // Kartın başlığını tap (əgər <a> yalnız şəkli əhatə edirsə, kartdakı başlıq linkindən və ya h2/h3-dən götür)
+                    let cardTitle = rawText;
+                    if ((!cardTitle || cardTitle.length < 10) && cardEl) {
+                        const headingEl = cardEl.querySelector('h1, h2, h3, h4, .title, [class*="title"], a[title]');
+                        if (headingEl) {
+                            cardTitle = (headingEl.innerText || headingEl.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+                        }
+                    }
+
+                    // Kartın şəklini tap
+                    let cardImage = '';
+                    if (cardEl) {
+                        const mediaEl = cardEl.querySelector('img, [style*="background-image"], [data-bg]');
+                        if (mediaEl && !isAdOrTinyImage(mediaEl)) {
+                            cardImage = resolveCleanImageUrl(extractImgSrc(mediaEl));
+                        }
+                    }
+
+                    // Kartın qısa açıqlamasını tap
+                    let cardDesc = '';
+                    if (cardEl) {
+                        const descEl = cardEl.querySelector('p, .desc, .description, .excerpt, .summary, [class*="desc"], [class*="text"]');
+                        if (descEl) {
+                            const dTxt = (descEl.innerText || '').replace(/\s+/g, ' ').trim();
+                            if (dTxt && dTxt !== cardTitle && dTxt.length >= 15) {
+                                cardDesc = dTxt;
+                            }
+                        }
+                    }
+
+                    // Xəbər obyekti kimi əlavə et (daxili xəbər linkidirsə və başlığı yetərincə uzundursa)
+                    const isLikelyArticle =
+                        linkHost === pageHost &&
+                        cardTitle.length >= 18 &&
+                        !seenArticleUrls.has(abs) &&
+                        !/\/(tag|tags|etiket|category|kateqoriya|bolme|author)\//i.test(linkPath);
+
+                    if (isLikelyArticle) {
+                        seenArticleUrls.add(abs);
+                        out.body.articles.push({
+                            title: cardTitle,
+                            url: abs,
+                            image: cardImage || null,
+                            description: cardDesc || null
+                        });
+                    }
+
+                    // Standart link kateqoriyalarına da əlavə et
+                    const linkLabel = cardTitle || rawText;
+                    if (!linkLabel || linkLabel.length < 3 || seenLinks.has(abs)) return;
+
+                    seenLinks.add(abs);
+                    const item = { text: linkLabel, url: abs };
+
+                    const isTag =
+                        Boolean(a.closest('[class*="tag"], .tags, .keywords')) ||
+                        /\/(tag|tags|etiket|movzu|topic)\//i.test(linkPath) ||
+                        linkLabel.startsWith('#');
+
+                    const isRelated =
+                        !isHomePage && (
+                            Boolean(a.closest('aside, [class*="related"], [class*="other-news"], [class*="sidebar"], [class*="news-list"], [class*="news-item"], [class*="news-card"], [class*="more-news"]')) ||
+                            Boolean(a.closest('h2, h3, h4')) ||
+                            /\d{2}:\d{2}\s+\d{1,2}\s+[a-zəğıöüşç]+\s+\d{4}$/i.test(linkLabel)
+                        );
+
+                    if (linkHost && pageHost && linkHost !== pageHost) {
+                        out.body.external_links.push(item);
+                    } else if (isTag) {
+                        out.body.tag_links.push(item);
+                    } else if (isRelated) {
+                        out.body.related_links.push(item);
+                    } else {
+                        out.body.article_links.push(item);
+                    }
+                } catch {}
+            });
+               
                 if (!text || text.length < 3) return;
                 if (navTextBlockRegex.test(text)) return;
 
