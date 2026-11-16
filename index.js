@@ -664,7 +664,6 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
 }
 
             const seenLinks = new Set();
-            const seenLinks = new Set();
              const pageHost = (() => {
                  try { return new URL(pageUrl).hostname.replace(/^www\./, '').toLowerCase(); }
                  catch { return ''; }
