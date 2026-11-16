@@ -620,26 +620,37 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             };
 
-            const ogImg = out.head.open_graph.image || out.head.twitter.image;
-            if (ogImg) {
-                try {
-                    const absoluteOg = new URL(ogImg, pageUrl).href;
-                    if (!isJunkImageUrl(absoluteOg)) {
-                        seenImages.add(absoluteOg);
-                        out.body.images.push(absoluteOg);
-                    }
-                } catch {}
-            }
+            const pushImageUrl = (rawUrl) => {
+    if (!rawUrl || rawUrl.startsWith('data:image/')) return;
+    try {
+        const abs = new URL(rawUrl, pageUrl).href;
+        if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
+            seenImages.add(abs);
+            out.body.images.push(abs);
+        }
+    } catch {}
+};
 
-            // 1. Əvvəlcə əsas məqalə konteynerindəki şəkilləri topla
-            if (contentContainer && contentContainer !== document.body) {
-                contentContainer.querySelectorAll('img').forEach(addImageFromEl);
-            }
+// 1. Əsas OG / Twitter şəkli
+const ogImg = out.head.open_graph.image || out.head.twitter.image;
+if (ogImg) {
+    pushImageUrl(ogImg);
+}
 
-            // 2. Əgər hələ də şəkil azdırsa, səhifədəki digər uyğun şəkilləri əlavə et
-            if (out.body.images.length < 3) {
-                document.querySelectorAll('img').forEach(addImageFromEl);
-            }
+// 2. Məqalə konteynerindəki şəkillər
+if (contentContainer && contentContainer !== document.body) {
+    contentContainer.querySelectorAll('img').forEach(addImageFromEl);
+}
+
+// 3. Heç şəkil tapılmayıbsa, JSON-LD NewsArticle şəkillərinə bax (bütün document-i yığmır)
+if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
+    for (const ld of out.head.json_ld) {
+        if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
+            const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
+            imgs.forEach(pushImageUrl);
+        }
+    }
+}
 
             const seenLinks = new Set();
             document.querySelectorAll('a').forEach(a => {
