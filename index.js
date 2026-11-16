@@ -684,7 +684,8 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
 
              const junkLinkPatterns = [
                  'liveinternet.ru', 'counter.yadro.ru', 'metrix.az',
-                 'facebook.com/sharer', 'twitter.com/intent', 'x.com/intent',
+
+                             'facebook.com/sharer', 'twitter.com/intent', 'x.com/intent',
                  't.me/share', 'api.whatsapp.com/send', 'wa.me/',
                  'coresoft.az'
              ];
@@ -702,49 +703,7 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
                      href.startsWith('#') ||
                      href.startsWith('javascript:') ||
                      href.startsWith('mailto:') ||
-                     href.startsWith('tel:')
-                 ) return;
 
-                 if (!text || text.length < 3) return;
-                 if (navTextBlockRegex.test(text)) return;
-
-                 try {
-                     const parsedLink = new URL(href, pageUrl);
-                     const abs = parsedLink.href;
-                     const lowerAbs = abs.toLowerCase();
-                     const linkHost = parsedLink.hostname.replace(/^www\./, '').toLowerCase();
-                     const linkPath = parsedLink.pathname.toLowerCase();
-
-                     if (abs === pageUrl) return;
-                     if (junkLinkPatterns.some(pattern => lowerAbs.includes(pattern))) return;
-                     if (linkHost === pageHost && navPathBlockRegex.test(linkPath)) return;
-                     if (seenLinks.has(abs)) return;
-
-                     seenLinks.add(abs);
-                     const item = { text, url: abs };
-
-                     const isTag =
-                         Boolean(a.closest('[class*="tag"], .tags, .keywords')) ||
-                         /\/(tag|tags|etiket|movzu|topic)\//i.test(linkPath) ||
-                         text.startsWith('#');
-
-                     const isRelated =
-                         Boolean(a.closest('aside, [class*="related"], [class*="other-news"], [class*="sidebar"], [class*="news-list"], [class*="news-item"], [class*="news-card"], [class*="more-news"]')) ||
-                         Boolean(a.closest('h2, h3, h4')) ||
-                         /\d{2}:\d{2}\s+\d{1,2}\s+[a-zəğıöüşç]+\s+\d{4}$/i.test(text);
-
-                     if (linkHost && pageHost && linkHost !== pageHost) {
-                         out.body.external_links.push(item);
-                     } else if (isTag) {
-                         out.body.tag_links.push(item);
-                     } else if (isRelated) {
-                         out.body.related_links.push(item);
-                     } else if (a.closest('p, blockquote, li')) {
-                         out.body.article_links.push(item);
-                     }
-                 } catch {}
-             });
-            
             const toAbsoluteVideoUrl = (rawSrc) => {
                  if (!rawSrc || typeof rawSrc !== 'string') return null;
                  const trimmed = rawSrc.trim();
