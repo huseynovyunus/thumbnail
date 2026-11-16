@@ -664,14 +664,24 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
 }
 
             const seenLinks = new Set();
+            const seenLinks = new Set();
+             const pageHost = (() => {
+                 try { return new URL(pageUrl).hostname.replace(/^www\./, '').toLowerCase(); }
+                 catch { return ''; }
+             })();
+
              const excludedLinkContainers = [
-                 'header', 'nav', 'footer', 'aside',
+                 'header', 'nav', 'footer',
                  '[role="navigation"]', '[aria-hidden="true"]',
-                 '[class*="sidebar"]', '[class*="banner"]', '[class*="advert"]',
+                 '[class*="banner"]', '[class*="advert"]',
                  '[class*="social"]', '[class*="share"]', '[class*="menu"]',
-                 '[class*="lang"]', '[class*="footer"]', '[class*="header"]',
-                 '[class*="related"]', '[class*="other-news"]'
+                 '[class*="navbar"]', '[class*="lang"]', '[class*="footer"]',
+                 '[class*="header"]', '[class*="breadcrumb"]', '[class*="auth"]',
+                 '[class*="login"]', '[class*="register"]'
              ].join(',');
+
+             const navTextBlockRegex = /^(ana səhifə|giriş|daxil ol|qeydiyyat|qeydiyyatdan keç|hesabım|çıxış|keçid|daha ətraflı|read more|bütün xəbərlər|son xəbərlər|çox oxunanlar|əlaqə|haqqımızda|reklam|redaksiya siyasəti|gecə modu|gece modu)$/i;
+             const navPathBlockRegex = /^\/?(az|en|ru|tr|fa|uz|hy)?\/?(login|signin|signup|register|auth|account|profile|contact|about|privacy|terms|search|rss)?\/?$/i;
 
              const junkLinkPatterns = [
                  'liveinternet.ru', 'counter.yadro.ru', 'metrix.az',
@@ -680,11 +690,9 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
                  'coresoft.az'
              ];
 
-             const linkRoot = (contentContainer && contentContainer !== document.body)
-                 ? contentContainer
-                 : document;
+             const scanRoot = document.querySelector('main, [role="main"], article') || document.body;
 
-             linkRoot.querySelectorAll('a').forEach(a => {
+             scanRoot.querySelectorAll('a').forEach(a => {
                  if (a.closest(excludedLinkContainers)) return;
 
                  const href = (a.getAttribute('href') || '').trim();
@@ -699,18 +707,41 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
                  ) return;
 
                  if (!text || text.length < 3) return;
-                 if (/^(keçid|daha ətraflı|read more|bütün xəbərlər|çox oxunanlar|əlaqə)$/i.test(text)) return;
+                 if (navTextBlockRegex.test(text)) return;
 
                  try {
-                     const abs = new URL(href, pageUrl).href;
+                     const parsedLink = new URL(href, pageUrl);
+                     const abs = parsedLink.href;
                      const lowerAbs = abs.toLowerCase();
+                     const linkHost = parsedLink.hostname.replace(/^www\./, '').toLowerCase();
+                     const linkPath = parsedLink.pathname.toLowerCase();
 
-                     if (junkLinkPatterns.some(pattern => lowerAbs.includes(pattern))) return;
                      if (abs === pageUrl) return;
+                     if (junkLinkPatterns.some(pattern => lowerAbs.includes(pattern))) return;
+                     if (linkHost === pageHost && navPathBlockRegex.test(linkPath)) return;
+                     if (seenLinks.has(abs)) return;
 
-                     if (!seenLinks.has(abs)) {
-                         seenLinks.add(abs);
-                         out.body.links.push({ text: text, url: abs });
+                     seenLinks.add(abs);
+                     const item = { text, url: abs };
+
+                     const isTag =
+                         Boolean(a.closest('[class*="tag"], .tags, .keywords')) ||
+                         /\/(tag|tags|etiket|movzu|topic)\//i.test(linkPath) ||
+                         text.startsWith('#');
+
+                     const isRelated =
+                         Boolean(a.closest('aside, [class*="related"], [class*="other-news"], [class*="sidebar"], [class*="news-list"], [class*="news-item"], [class*="news-card"], [class*="more-news"]')) ||
+                         Boolean(a.closest('h2, h3, h4')) ||
+                         /\d{2}:\d{2}\s+\d{1,2}\s+[a-zəğıöüşç]+\s+\d{4}$/i.test(text);
+
+                     if (linkHost && pageHost && linkHost !== pageHost) {
+                         out.body.external_links.push(item);
+                     } else if (isTag) {
+                         out.body.tag_links.push(item);
+                     } else if (isRelated) {
+                         out.body.related_links.push(item);
+                     } else if (a.closest('p, blockquote, li')) {
+                         out.body.article_links.push(item);
                      }
                  } catch {}
              });
