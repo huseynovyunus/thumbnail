@@ -343,11 +343,14 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     json_ld: []
                 },
                 body: {
-                    h1: '',
-                    paragraphs: [],
-                    images: [],
-                    links: [],
-                    videoSources: []
+                     h1: '',
+                     paragraphs: [],
+                     images: [],
+                     article_links: [],
+                     related_links: [],
+                     tag_links: [],
+                     external_links: [],
+                     videoSources: []
                 }
             };
 
