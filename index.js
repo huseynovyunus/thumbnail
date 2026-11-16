@@ -756,8 +756,8 @@ if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
                          out.body.related_links.push(item);
                      } else {
                          out.body.article_links.push(item);
-                     }
-                 } catch {
+            
+                 } catch {} 
              });
 
             const toAbsoluteVideoUrl = (rawSrc) => {
