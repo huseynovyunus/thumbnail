@@ -234,7 +234,7 @@
       let browser = null;
       try {
           browser = await puppeteer.launch({
-              args: [;
+              args: [
                   ...chromium.args,
                  '--no-sandbox',
                  '--disable-setuid-sandbox',
