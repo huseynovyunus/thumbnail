@@ -470,7 +470,7 @@
                       '.advertisement', '.social-share', '.tags', '.author-box',
                       '.read-more', '.other-news', '.news-box', 'figure',
                       '[class*="related"]', '[class*="share"]', '[class*="social"]',
-                      '[class*="banner"]', '[class*="advert"]', '.poll', '.polls';
+                      '[class*="banner"]', '[class*="advert"]', '.poll', '.polls'
                   ];
                   clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
   
