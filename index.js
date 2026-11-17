@@ -358,8 +358,8 @@
 
       const lowerName = name.toLowerCase();
       const cleanContent = (lowerName.includes('image') || lowerName.includes('url'))
-          ? content.replace(/\\/g, '/')
-          : content;
+          ? content.replace(/\\/g, '/').trim()
+          : content.trim();
   
       if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
           out.head.all_meta[name] = cleanContent;
