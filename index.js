@@ -555,7 +555,7 @@
                   '[class*="sponsor"]', '[id*="sponsor"]',
                   '[class*="social"]', '[class*="share"]',
                   '[class*="sidebar"]', '[class*="related"]',
-                  '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle';
+                  '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
               ].join(',');
   
               const isJunkImageUrl = (urlStr) => {
