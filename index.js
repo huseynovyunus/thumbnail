@@ -439,7 +439,7 @@
                   '.content-text',
                   'main',
                   '[role="main"]',
-                  'article';
+                  'article',
               ];
   
               let contentContainer = null;
