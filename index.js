@@ -560,7 +560,7 @@
   
               const isJunkImageUrl = (urlStr) => {
                   const lower = (urlStr || '').toLowerCase();
-                  return [;
+                  return [
                       'tracker', 'pixel', '.svg', 'placeholder', 'no+thumbnail',
                       '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
                       'doubleclick', 'googlesyndication', 'catfish',
