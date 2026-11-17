@@ -311,7 +311,7 @@
               window.dispatchEvent(new MouseEvent('mousemove', {
                   bubbles: true,
                   clientX: Math.floor(Math.random() * 400) + 100,
-                  clientY: Math.floor(Math.random() * 300) + 100;
+                  clientY: Math.floor(Math.random() * 300) + 100
               }));
           });
   
