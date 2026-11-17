@@ -652,20 +652,20 @@
       }
   }
   
-              const seenLinks = new Set();
-              document.querySelectorAll('a').forEach(a => {
-                  const href = a.getAttribute('href');
-                  const text = a.innerText.trim();
-                  if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-                  try {
-                      const abs = new URL(href, pageUrl).href;
-                      if (!seenLinks.has(abs)) {
-                          seenLinks.add(abs);
-                          out.body.links.push({ text: text || 'Keçid', url: abs });
-                      }
-                  } catch {}
-              });
-  
+             const seenLinks = new Set();
+document.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href');
+    const text = a.innerText.trim();
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+    try {
+        const abs = new URL(href, pageUrl).href;
+        if (!seenLinks.has(abs)) {
+            seenLinks.add(abs);
+            out.body.links.push({ text: text || 'Keçid', url: abs });
+        }
+    } catch {}
+});
+                
               const toAbsoluteVideoUrl = (rawSrc) => {
                    if (!rawSrc || typeof rawSrc !== 'string') return null;
                    const trimmed = rawSrc.trim();
