@@ -487,13 +487,13 @@
                       const lowerTxt = txt.toLowerCase();
   
                       const isJunk =
-                          upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||;
-                          lowerTxt.includes('hörmətli istifadəçi') ||;
-                          lowerTxt.includes('ödənişli') ||;
-                          lowerTxt.includes('qeydiyyatdan keçin') ||;
-                          lowerTxt.includes('t.me/') ||;
-                          lowerTxt.includes('instagram.com') ||;
-                          lowerTxt.includes('bizi') ||;
+                          upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
+                          lowerTxt.includes('hörmətli istifadəçi') ||
+                          lowerTxt.includes('ödənişli') ||
+                          lowerTxt.includes('qeydiyyatdan keçin') ||
+                          lowerTxt.includes('t.me/') ||
+                          lowerTxt.includes('instagram.com') ||
+                          lowerTxt.includes('bizi') ||
                           lowerTxt.includes('izləyin');
   
                       if (isJunk || seenTexts.has(txt)) return;
