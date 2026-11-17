@@ -294,10 +294,10 @@
               const b = (document.body?.innerText || '').toLowerCase();
               return (
                   t.includes('just a moment') ||
-                  t.includes('bir dakika lütfen') ||;
-                  t.includes('attention required') ||;
-                  b.includes('checking your browser') ||;
-                  b.includes('kötü niyetli botlara karşı');
+                  t.includes('bir dakika lütfen') ||
+                  t.includes('attention required') ||
+                  b.includes('checking your browser') ||
+                  b.includes('kötü niyetli botlara karşı')
               );
           });
   
