@@ -511,8 +511,8 @@
   
                   // 2. Əgər mətn <p> əvəzinə <br> / <div> ilə bölünübsə
                   if (out.body.paragraphs.length < 2) {
-                      const htmlChunks = clone.innerHTML;
-                          .replace(/<br\s*\/?>/gi, '\n');
+                      const htmlChunks = clone.innerHTML
+                          .replace(/<br\s*\/?>/gi, '\n')
                           .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, '\n');
                       const tempDiv = document.createElement('div');
                       tempDiv.innerHTML = htmlChunks;
