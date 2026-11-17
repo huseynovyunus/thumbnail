@@ -1,11 +1,24 @@
 
 
+
   // ====================================================================
   // 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
   // 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
   // ====================================================================
   
-  require('dotenv').config();
+  /*
+ * 🛠️ FUNKSİYALAR VƏ ONLARIN TƏSVİRİ:
+ * 1. ipToLong(ip): IP ünvanını rəqəm formatına çevirir.
+ * 2. isPrivateOrBlockedIP(input): Təhlükəsizlik üçün lokal/özəl IP-ləri bloklayır.
+ * 3. cleanText(text): Mətndəki artıq boşluqları və [1] tipli istinadları silir.
+ * 4. resolveShortUrl(targetUrl): Qısaldılmış URL-ləri (bit.ly və s.) əsl ünvanına yönləndirir.
+ * 5. generateArticleEmbedHtml(...): Məqalə üçün vizual HTML kartı hazırlayır.
+ * 6. normalizeEmbedUrl(rawUrl): Video linklərini iframe formatına uyğunlaşdırır.
+ * 7. buildVideoEmbeds(...): Tapılan videolar üçün HTML pleyer kodları yaradır.
+ * 8. scrapeUniversalWeb(...): Puppeteer vasitəsilə səhifəni render edir və məlumatları (Meta, JSON-LD, Mətn) çıxarır.
+ */
+
+require('dotenv').config();
   
   const express = require('express');
   const cors = require('cors'); // 👈 1. Bunu əlavə et;
@@ -1014,4 +1027,5 @@ document.querySelectorAll('a').forEach(a => {
  app.listen(PORT, '0.0.0.0', () => {
      console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
  });
+
 
