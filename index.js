@@ -339,7 +339,7 @@
                       paragraphs: [],
                       images: [],
                       links: [],
-                      videoSources: [];
+                      videoSources: [],
                   }
               };
   
