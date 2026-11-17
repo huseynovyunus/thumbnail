@@ -68,7 +68,7 @@
           status: "ok",
           message: "Server aktivdir və problemsiz işləyir.",
           uptime_seconds: Math.floor(process.uptime()),
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
       });
   });
   
