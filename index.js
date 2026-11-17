@@ -223,7 +223,7 @@
   
       return {
           combinedHtml: items.map(item => item.html).join('\n'),
-          items;
+          items
       };
   }
   
