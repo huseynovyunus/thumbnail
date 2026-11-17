@@ -77,7 +77,7 @@
   // --------------------------------------------------------------------
   const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
   const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
-  const PRIVATE_IP_RANGES = [;
+  const PRIVATE_IP_RANGES = [
       { start: '127.0.0.0', end: '127.255.255.255' },
       { start: '10.0.0.0', end: '10.255.255.255' },
       { start: '172.16.0.0', end: '172.31.255.255' },
