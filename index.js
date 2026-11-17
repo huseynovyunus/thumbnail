@@ -424,7 +424,7 @@
               if (h1El) out.body.h1 = h1El.innerText.trim();
               if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
   
-              const contentSelectors = [;
+              const contentSelectors = [
                   '[itemprop="articleBody"]',
                   '.article-body',
                   '.article_body',
