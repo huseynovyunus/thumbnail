@@ -522,7 +522,7 @@
   
                   // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
                   if (out.body.paragraphs.length === 0) {
-                      const headlineSelectors = [;const headlineSelectors = [
+                      const headlineSelectors = [
     'a[href*="/xeber/"]',
     '.titleline > a',
     'article h1 a',
