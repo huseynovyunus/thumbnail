@@ -1,1014 +1,1014 @@
-  // ====================================================================
-  // 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
-  // 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
-  // ====================================================================
-  
-  require('dotenv').config();
-  
-  const express = require('express');
-  const cors = require('cors'); // 👈 1. Bunu əlavə et;
-  const axios = require('axios');
-  const puppeteer = require('puppeteer-extra');
-  const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-  puppeteer.use(StealthPlugin());
-  const chromium = require('@sparticuz/chromium');
-  
-  const app = express();
-  
-  app.use(cors()); // 👈 2. Bütün origin-lərə icazə vermək üçün aktivləşdir;
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-  
-  // 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
-  app.use((req, res, next) => {
-      if (req.body && Object.keys(req.body).length > 0) return next();
-  
-      let data = '';
-      let finished = false;
-  
-      req.on('data', chunk => { data += chunk; });
-      req.on('end', () => {
-          if (finished) return;
-          finished = true;
-          if (data) {
-              try {
-                  req.body = JSON.parse(data);
-              } catch (e) {
-                  req.body = { url: data.trim() };
-              }
-          } else {
-              req.body = {};
-          }
-          next();
-      });
-  
-      // ⚡ 2 saniyə ərzində 'end' gəlməzsə, asılı qalmanın qarşısını al
-      setTimeout(() => {
-          if (!finished) {
-              finished = true;
-              if (data && !req.body) {
-                  try {
-                      req.body = JSON.parse(data);
-                  } catch (e) {
-                      req.body = { url: data.trim() };
-                  }
-              } else if (!req.body) {
-                  req.body = {};
-              }
-              next();
-          }
-      }, 2000);
-  });
-  
-  // --------------------------------------------------------------------
-  // 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST qəbul edir)
-  // --------------------------------------------------------------------
-  app.all(['/health', '/healrh'], (req, res) => {
-      return res.status(200).json({
-          status: "ok",
-          message: "Server aktivdir və problemsiz işləyir.",
-          uptime_seconds: Math.floor(process.uptime()),
-          timestamp: new Date().toISOString()
-      });
-  });
-  
-  // --------------------------------------------------------------------
-  // 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ (RAPIDAPI ADLARINA UYĞUNLAŞDIRILDI)
-  // --------------------------------------------------------------------
-  const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
-  const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0']; 
-  const PRIVATE_IP_RANGES = [
-      { start: '127.0.0.0', end: '127.255.255.255' },
-      { start: '10.0.0.0', end: '10.255.255.255' },
-      { start: '172.16.0.0', end: '172.31.255.255' },
-      { start: '192.168.0.0', end: '192.168.255.255' },
-      { start: '169.254.0.0', end: '169.254.255.255' }
-  ];
-  
-  const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
-  
-  // RapidAPI plan adları: basic, pro, ultra, mega
-  const PLAN_CONTENT_LIMITS = {
-      contentLimit:   { basic: 1000, pro: 5000, ultra: null, mega: null },
-      paragraphLimit: { basic: 10,   pro: 30,   ultra: null,   mega: null },
-      imageLimit:     { basic: 10,   pro: 30,   ultra: null,   mega: null },
-      linkLimit:      { basic: 10,   pro: 30,   ultra: null,   mega: null }
-  };
-  
-  const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
-  
-  function ipToLong(ip) {
-      const parts = ip.split('.');
-      if (parts.length !== 4) return 0;
-      return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
-  }
-  
-  function isPrivateOrBlockedIP(input) {
-      try {
-          let hostname = input;
-          if (input && input.includes('://')) {
-              hostname = new URL(input).hostname;
-          }
-          if (!hostname) return true;
-  
-          const lower = hostname.toLowerCase();
-          if (BLOCKED_HOSTS_EXACT.includes(lower)) return true;
-  
-          const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
-          if (isIp) {
-              const ipLong = ipToLong(hostname);
-              for (const range of PRIVATE_IP_RANGES) {
-                  if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) return true;
-              }
-              return false;
-          }
-  
-          if (lower === '[::1]' || lower === '::1') return true;
-          return false;
-      } catch {
-          return true;
-      }
-  }
-  
-  function cleanText(text) {
-      if (!text || typeof text !== 'string') return text;
-      return text
-          .replace(/\[\d+\]/g, '')
-          .replace(/\[[a-zA-Z]\]/g, '')
-          .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-  }
-  
-  // ⚡ Qısa linkləri əsl URL-ə çevirir
-  async function resolveShortUrl(targetUrl) {
-      try {
-          const u = new URL(targetUrl);
-          const shortHosts = ['pin.it', 'bit.ly', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly'];
-          if (shortHosts.includes(u.hostname.toLowerCase())) {
-              const redirect = await axios.get(targetUrl, {
-                  maxRedirects: 5,
-                  timeout: 5000,
-                  validateStatus: (s) => s >= 200 && s < 400,
-                  headers: { 'User-Agent': USER_AGENT }
-              });
-              return redirect.request?.res?.responseUrl || redirect.headers?.location || targetUrl;
-          }
-      } catch {}
-      return targetUrl;
-  }
-  
-  // 📰 Responsiv Məqalə Embed Kartı
-  function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
-      const hasThumb = thumbnail && !thumbnail.includes('placeholder') && !thumbnail.includes('No+Thumbnail');
-      return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
-  }
-  
-  function normalizeEmbedUrl(rawUrl) {
-      const clean = String(rawUrl || '').replace(/\\/g, '/').trim();
-      if (!clean || /^(blob:|javascript:|data:)/i.test(clean)) return '';
-      try {
-          const u = new URL(clean);
-          const host = u.hostname.toLowerCase();
-          if (host.includes('youtu.be')) {
-              const vid = u.pathname.replace(/^\/+/, '').split('/')[0];
-              if (vid) return `https://www.youtube.com/embed/${vid}`;
-          }
-          if (host.includes('youtube.com') && u.pathname === '/watch') {
-              const vid = u.searchParams.get('v');
-              if (vid) return `https://www.youtube.com/embed/${vid}`;
-          }
-          return u.href;
-      } catch {
-          return clean;
-      }
-  }
-  
-  function escapeHtmlAttr(str) {
-      return String(str || '')
-          .replace(/&/g, '&amp;')
-          .replace(/"/g, '&quot;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-  }
-  
-  function buildVideoEmbeds(videoSources = [], limit = 10) {
-      if (!Array.isArray(videoSources) || videoSources.length === 0) {
-          return { combinedHtml: '', items: [] };
-      }
-  
-      const items = [];
-      for (const rawUrl of videoSources) {
-          if (items.length >= limit) break;
-          const normalizedUrl = normalizeEmbedUrl(rawUrl);
-          if (!normalizedUrl) continue;
-  
-          const safeUrl = escapeHtmlAttr(normalizedUrl);
-          const isDirectMp4 = /\.mp4(\?.*)?$/i.test(normalizedUrl);
-          const isHlsStream = /\.m3u8(\?.*)?$/i.test(normalizedUrl);
-          const type = isDirectMp4 ? 'mp4' : isHlsStream ? 'hls' : 'iframe';
-          const index = items.length;
-  
-          let html = '';
-          if (isDirectMp4) {
-              html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls preload="metadata" src="${safeUrl}" style="width:100%;height:auto;display:block;background:#000;"></video></div>`;
-          } else if (isHlsStream) {
-              html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#0f172a;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:6px;">HLS Video Axını (.m3u8)</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;word-break:break-all;">${safeUrl}</a></div>`;
-          } else {
-              html = `<div class="web-video-embed" data-video-index="${index}" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:12px 0;background:#000;"><iframe src="${safeUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe></div>`;
-          }
-  
-          items.push({ index: index + 1, url: normalizedUrl, type, html });
-      }
-  
-      return {
-          combinedHtml: items.map(item => item.html).join('\n'),
-          items
-      };
-  }
-  
-  // --------------------------------------------------------------------
-  // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
-  // --------------------------------------------------------------------
-  async function scrapeUniversalWeb(targetUrl, plan = "basic") {
-      let browser = null;
-      try {
-          browser = await puppeteer.launch({
-              args: [
-                  ...chromium.args,
-                 '--no-sandbox',
-                 '--disable-setuid-sandbox',
-                 '--disable-dev-shm-usage',
-                 '--disable-gpu',
-                 '--single-process',
-                 '--no-zygote',
-                 '--disable-blink-features=AutomationControlled', // 👈 Bot deteksiyasını söndürür;
-                 '--disable-infobars',
-                 '--window-size=1920,1080',
-                 '--start-maximized',
-                 '--hide-scrollbars',
-                 '--disable-web-security',
-                 '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7', // 👈 Dil uyğunluğu;
-                 '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-              ],
-              defaultViewport: { width: 1280, height: 800 },
-              executablePath: await chromium.executablePath(),
-              headless: chromium.headless,
-              ignoreHTTPSErrors: true
-          });
-  
-          const page = await browser.newPage();
-          await page.setUserAgent(USER_AGENT);
-          await page.setExtraHTTPHeaders({
-              'Accept-Language': 'az,tr,en-US,en;q=0.9',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-          });
-  
-          // 🛡️ Render 512MB RAM mühafizəsi
-          await page.setRequestInterception(true);
-          page.on('request', (req) => {
-               const resource = req.resourceType();
-               const reqUrl = req.url().toLowerCase();
-               const isAdUrl = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'].some(k => reqUrl.includes(k));
-               if (isAdUrl || ['image', 'media', 'font', 'stylesheet'].includes(resource)) {
-                   req.abort();
-               } else {
-                   req.continue();
-               }
-           });
-  
-          await page.goto(targetUrl, {
-              waitUntil: 'domcontentloaded',
-              timeout: 15000
-          });
-  
-          const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  
-          // Qısa ilkin gözləmə (JS və DOM-un oturması üçün)
-          const quickDelay = Math.floor(Math.random() * 500) + 700; // 0.7 - 1.2 san;
-          await delay(quickDelay);
-  
-          // Cloudflare challenge düşübsə, yalnız o halda bir qədər də gözlə
-          const isChallenge = await page.evaluate(() => {
-              const t = (document.title || '').toLowerCase();
-              const b = (document.body?.innerText || '').toLowerCase();
-              return (
-                  t.includes('just a moment') ||
-                  t.includes('bir dakika lütfen') ||
-                  t.includes('attention required') ||
-                  b.includes('checking your browser') ||
-                  b.includes('kötü niyetli botlara karşı')
-              );
-          });
-  
-          if (isChallenge) {
-              await delay(3500);
-          }
-  
-          // Qısa scroll və mouse hərəkəti
-          await page.evaluate(() => {
-              window.scrollBy(0, Math.floor(Math.random() * 250) + 100);
-              window.dispatchEvent(new MouseEvent('mousemove', {
-                  bubbles: true,
-                  clientX: Math.floor(Math.random() * 400) + 100,
-                  clientY: Math.floor(Math.random() * 300) + 100
-              }));
-          });
-  
-          await delay(300);
-          
-          const extracted = await page.evaluate((pageUrl) => {
-              const out = {
-                  head: {
-                      title: '',
-                      description: '',
-                      site_name: '',
-                      canonical: '',
-                      favicon: '',
-                      author: '',
-                      keywords: '',
-                      language: document.documentElement.lang || '',
-                      charset: document.characterSet || 'UTF-8',
-                      open_graph: {},
-                      twitter: {},
-                      all_meta: {},
-                      json_ld: [],
-                  },
-                  body: {
-                      h1: '',
-                      paragraphs: [],
-                      images: [],
-                      links: [],
-                      videoSources: [],
-                  }
-              };
-  
-              const titleEl = document.querySelector('title');
-              if (titleEl && titleEl.innerText) {
-                  out.head.title = titleEl.innerText.trim();
-              }
-  
-              document.querySelectorAll('meta').forEach(meta => {
-      const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
-      const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
-  
-      if (!name || !content) return;
+// ====================================================================
+// 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
+// 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
+// ====================================================================
 
-      const lowerName = name.toLowerCase();
-      const cleanContent = (lowerName.includes('image') || lowerName.includes('url'))
-          ? content.replace(/\\/g, '/')
-          : content;
-  
-      if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
-          out.head.all_meta[name] = cleanContent;
-      }
-  
-      if (lowerName.startsWith('og:')) {
-          out.head.open_graph[lowerName.replace(/^og:/, '')] = cleanContent;
-      }
-      if (lowerName.startsWith('twitter:')) {
-          out.head.twitter[lowerName.replace(/^twitter:/, '')] = cleanContent;
-      }
-      if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
-          out.head.description = cleanContent;
-      }
-      if (['og:site_name', 'application-name', 'publisher'].includes(lowerName) && !out.head.site_name) {
-          out.head.site_name = cleanContent;
-      }
-      if (['author', 'article:author', 'twitter:creator'].includes(lowerName) && !out.head.author) {
-          out.head.author = cleanContent;
-      }
-      if (lowerName === 'keywords' && !out.head.keywords) {
-          out.head.keywords = cleanContent;
-      }
-  });
-  
-              const canonicalEl = document.querySelector('link[rel="canonical"]');
-              if (canonicalEl && canonicalEl.getAttribute('href')) {
-                  out.head.canonical = canonicalEl.getAttribute('href');
-              } else if (out.head.open_graph.url) {
-                  out.head.canonical = out.head.open_graph.url;
-              }
-  
-              const iconEl = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
-              if (iconEl && iconEl.getAttribute('href')) {
-                  try {
-                      out.head.favicon = new URL(iconEl.getAttribute('href'), pageUrl).href;
-                  } catch {
-                      out.head.favicon = iconEl.getAttribute('href');
-                  }
-              } else {
-                  try {
-                      const u = new URL(pageUrl);
-                      out.head.favicon = `${u.origin}/favicon.ico`;
-                  } catch {}
-              }
-  
-              document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
-                  try {
-                      const raw = script.innerText.trim();
-                      if (raw) {
-                          const parsed = JSON.parse(raw);
-                          out.head.json_ld.push(parsed);
-                          if (!out.head.title && parsed.headline) out.head.title = parsed.headline;
-                          if (!out.head.description && parsed.description) out.head.description = parsed.description;
-                      }
-                  } catch {}
-              });
-  
-              if (!out.head.title) {
-                  out.head.title = out.head.open_graph.title || out.head.twitter.title || '';
-              }
-  
-              const h1El = document.querySelector('h1');
-              if (h1El) out.body.h1 = h1El.innerText.trim();
-              if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
-  
-              const contentSelectors = [
-                  '[itemprop="articleBody"]',
-                  '.article-body',
-                  '.article_body',
-                  '.news-text',
-                  '.news_text',
-                  '.news-inner',
-                  '.news-content',
-                  '.post-content',
-                  '.article-content',
-                  '.entry-content',
-                  '.single-content',
-                  '.content-text',
-                  'main',
-                  '[role="main"]',
-                  'article',
-              ];
-  
-              let contentContainer = null;
-              let bestTextLength = 0;
-  
-              for (const selector of contentSelectors) {
-                  const elements = document.querySelectorAll(selector);
-                  elements.forEach(el => {
-                      const txtLen = (el.innerText || '').trim().length;
-                      if (txtLen > bestTextLength && txtLen >= 150) {
-                          bestTextLength = txtLen;
-                          contentContainer = el;
-                      }
-                  });
-                  if (contentContainer && bestTextLength >= 250 && !['main', '[role="main"]', 'article'].includes(selector)) {
-                      break;
-                  }
-              }
-  
-              contentContainer = contentContainer || document.body;
-  
-              if (contentContainer) {
-                  const clone = contentContainer.cloneNode(true);
-  
-                  const removeSelectors = [
-                      'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
-                      '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
-                      '.advertisement', '.social-share', '.tags', '.author-box',
-                      '.read-more', '.other-news', '.news-box', 'figure',
-                      '[class*="related"]', '[class*="share"]', '[class*="social"]',
-                      '[class*="banner"]', '[class*="advert"]', '.poll', '.polls'
-                  ];
-                  clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
-  
-                  const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
-                  const seenTexts = new Set();
-  
-                  function pushCleanText(rawValue, minLength = 25) {
-                      const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
-                      if (!txt || txt.length < minLength) return;
-  
-                      if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
-  
-                      const upperTxt = txt.toUpperCase();
-                      const lowerTxt = txt.toLowerCase();
-  
-                      const isJunk =
-                          upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
-                          lowerTxt.includes('hörmətli istifadəçi') ||
-                          lowerTxt.includes('ödənişli') ||
-                          lowerTxt.includes('qeydiyyatdan keçin') ||
-                          lowerTxt.includes('t.me/') ||
-                          lowerTxt.includes('instagram.com') ||
-                          lowerTxt.includes('bizi') ||
-                          lowerTxt.includes('izləyin');
-  
-                      if (isJunk || seenTexts.has(txt)) return;
-  
-                      seenTexts.add(txt);
-                      out.body.paragraphs.push(txt);
-                  }
-  
-                  // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
-                  clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
-                      if (node.closest(excludedSelector)) return;
-                      const isHeading = /^H[1-3]$/.test(node.tagName);
-                      pushCleanText(node.innerText, isHeading ? 8 : 30);
-                  });
-  
-                  // 2. Əgər mətn <p> əvəzinə <br> / <div> ilə bölünübsə
-                  if (out.body.paragraphs.length < 2) {
-                      const htmlChunks = clone.innerHTML
-                          .replace(/<br\s*\/?>/gi, '\n')
-                          .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, '\n');
-                      const tempDiv = document.createElement('div');
-                      tempDiv.innerHTML = htmlChunks;
-                      const lines = (tempDiv.innerText || tempDiv.textContent || '').split('\n');
-                      lines.forEach(line => pushCleanText(line, 30));
-                  }
-  
-                  // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
-                  if (out.body.paragraphs.length === 0) {
-                      const headlineSelectors = [
-    'a[href*="/xeber/"]',
-    '.titleline > a',
-    'article h1 a',
-    'article h2 a',
-    'article h3 a',
-    '.news-item a[href]',
-    '.article-item a[href]',
-    '.post-item a[href]',
-    '.story a[href]',
-    '.card a[href]'
-].join(',');
-  
-                      clone.querySelectorAll(headlineSelectors).forEach(link => {
-                          if (link.closest(excludedSelector)) return;
-                          pushCleanText(link.innerText, 8);
-                      });
-                  }
-              }
-              
-              if (!out.head.description && out.body.paragraphs.length > 0) {
-                  out.head.description = out.body.paragraphs[0];
-              }
-  
-              const seenImages = new Set();
-  
-              const adOrUiSelector = [
-                  'header', 'nav', 'footer', 'aside',
-                  '[class*="banner"]', '[id*="banner"]',
-                  '[class*="advert"]', '[id*="advert"]',
-                  '[class*="sponsor"]', '[id*="sponsor"]',
-                  '[class*="social"]', '[class*="share"]',
-                  '[class*="sidebar"]', '[class*="related"]',
-                  '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
-              ].join(',');
-  
-              const isJunkImageUrl = (urlStr) => {
-                  const lower = (urlStr || '').toLowerCase();
-                  return [
-                      'tracker', 'pixel', '.svg', 'placeholder', 'no+thumbnail',
-                      '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
-                      'doubleclick', 'googlesyndication', 'catfish',
-                      'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
-                      'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/'
-                  ].some(k => lower.includes(k));
-              };
-  
-              const isAdOrUiImage = (imgEl) => {
-                  if (!imgEl) return false;
-  
-                  if (typeof imgEl.matches === 'function' && imgEl.matches(adOrUiSelector)) {
-                      return true;
-                  }
-  
-                  if (typeof imgEl.closest === 'function' && imgEl.closest(adOrUiSelector)) {
-                      return true;
-                  }
-  
-                  const w = parseInt(imgEl.getAttribute('width'), 10);
-                  const h = parseInt(imgEl.getAttribute('height'), 10);
-                  if ((!isNaN(w) && w > 0 && w <= 60) || (!isNaN(h) && h > 0 && h <= 60)) {
-                      return true;
-                  }
-  
-                  return false;
-              };
-  
-              const extractImgSrc = (imgEl) => {
-                  const direct =
-                      imgEl.getAttribute('src') ||
-                      imgEl.getAttribute('data-src') ||
-                      imgEl.getAttribute('data-lazy-src') ||
-                      imgEl.getAttribute('data-original')
-  
-                  if (direct) return direct.trim();
-  
-                  const srcset = imgEl.getAttribute('srcset') || imgEl.getAttribute('data-srcset');
-                  if (srcset) {
-                      const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
-                      if (firstCandidate) return firstCandidate;
-                  }
-  
-                  return '';
-              };
-  
-              const addImageFromEl = (imgEl) => {
-                  if (isAdOrUiImage(imgEl)) return;
-                  const src = extractImgSrc(imgEl);
-                  if (!src || src.startsWith('data:image/')) return;
-                  try {
-                      const abs = new URL(src, pageUrl).href;
-                      if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
-                          seenImages.add(abs);
-                          out.body.images.push(abs);
-                      }
-                  } catch {}
-              };
-  
-              const pushImageUrl = (rawUrl) => {
-      if (!rawUrl || rawUrl.startsWith('data:image/')) return;
-      try {
-          const abs = new URL(rawUrl, pageUrl).href;
-          if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
-              seenImages.add(abs);
-              out.body.images.push(abs);
-          }
-      } catch {}
-  };
-  
-  // 1. Əsas OG / Twitter şəkli
-  const ogImg = out.head.open_graph.image || out.head.twitter.image;
-  if (ogImg) {
-      pushImageUrl(ogImg);
-  }
-  
-  // 2. Məqalə konteynerindəki şəkillər
-  if (contentContainer && contentContainer !== document.body) {
-      contentContainer.querySelectorAll('img').forEach(addImageFromEl);
-  }
-  
-  // 3. Heç şəkil tapılmayıbsa, JSON-LD NewsArticle şəkillərinə bax (bütün document-i yığmır)
-  if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
-      for (const ld of out.head.json_ld) {
-          if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
-              const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
-              imgs.forEach(pushImageUrl);
-          }
-      }
-  }
-  
-             const seenLinks = new Set();
-document.querySelectorAll('a').forEach(a => {
-    const href = a.getAttribute('href');
-    const text = a.innerText.trim();
-    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+require('dotenv').config();
+
+const express = require('express');
+const cors = require('cors'); // 👈 1. Bunu əlavə et;
+const axios = require('axios');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
+const chromium = require('@sparticuz/chromium');
+
+const app = express();
+
+app.use(cors()); // 👈 2. Bütün origin-lərə icazə vermək üçün aktivləşdir;
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
+app.use((req, res, next) => {
+    if (req.body && Object.keys(req.body).length > 0) return next();
+
+    let data = '';
+    let finished = false;
+
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+        if (finished) return;
+        finished = true;
+        if (data) {
+            try {
+                req.body = JSON.parse(data);
+            } catch (e) {
+                req.body = { url: data.trim() };
+            }
+        } else {
+            req.body = {};
+        }
+        next();
+    });
+
+    // ⚡ 2 saniyə ərzində 'end' gəlməzsə, asılı qalmanın qarşısını al
+    setTimeout(() => {
+        if (!finished) {
+            finished = true;
+            if (data && !req.body) {
+                try {
+                    req.body = JSON.parse(data);
+                } catch (e) {
+                    req.body = { url: data.trim() };
+                }
+            } else if (!req.body) {
+                req.body = {};
+            }
+            next();
+        }
+    }, 2000);
+});
+
+// --------------------------------------------------------------------
+// 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST qəbul edir)
+// --------------------------------------------------------------------
+app.all(['/health', '/healrh'], (req, res) => {
+    return res.status(200).json({
+        status: "ok",
+        message: "Server aktivdir və problemsiz işləyir.",
+        uptime_seconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
+});
+
+// --------------------------------------------------------------------
+// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ (RAPIDAPI ADLARINA UYĞUNLAŞDIRILDI)
+// --------------------------------------------------------------------
+const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
+const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0'];
+const PRIVATE_IP_RANGES = [
+    { start: '127.0.0.0', end: '127.255.255.255' },
+    { start: '10.0.0.0', end: '10.255.255.255' },
+    { start: '172.16.0.0', end: '172.31.255.255' },
+    { start: '192.168.0.0', end: '192.168.255.255' },
+    { start: '169.254.0.0', end: '169.254.255.255' }
+];
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
+
+// RapidAPI plan adları: basic, pro, ultra, mega
+const PLAN_CONTENT_LIMITS = {
+    contentLimit:   { basic: 1000, pro: 5000, ultra: null, mega: null },
+    paragraphLimit: { basic: 10,   pro: 30,   ultra: null, mega: null },
+    imageLimit:     { basic: 10,   pro: 30,   ultra: null, mega: null },
+    linkLimit:      { basic: 10,   pro: 30,   ultra: null, mega: null }
+};
+
+const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
+
+function ipToLong(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4) return 0;
+    return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
+}
+
+function isPrivateOrBlockedIP(input) {
     try {
-        const abs = new URL(href, pageUrl).href;
-        if (!seenLinks.has(abs)) {
-            seenLinks.add(abs);
-            out.body.links.push({ text: text || 'Keçid', url: abs });
+        let hostname = input;
+        if (input && input.includes('://')) {
+            hostname = new URL(input).hostname;
+        }
+        if (!hostname) return true;
+
+        const lower = hostname.toLowerCase();
+        if (BLOCKED_HOSTS_EXACT.includes(lower)) return true;
+
+        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+        if (isIp) {
+            const ipLong = ipToLong(hostname);
+            for (const range of PRIVATE_IP_RANGES) {
+                if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) return true;
+            }
+            return false;
+        }
+
+        if (lower === '[::1]' || lower === '::1') return true;
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+function cleanText(text) {
+    if (!text || typeof text !== 'string') return text;
+    return text
+        .replace(/\[\d+\]/g, '')
+        .replace(/\[[a-zA-Z]\]/g, '')
+        .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// ⚡ Qısa linkləri əsl URL-ə çevirir
+async function resolveShortUrl(targetUrl) {
+    try {
+        const u = new URL(targetUrl);
+        const shortHosts = ['pin.it', 'bit.ly', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly'];
+        if (shortHosts.includes(u.hostname.toLowerCase())) {
+            const redirect = await axios.get(targetUrl, {
+                maxRedirects: 5,
+                timeout: 5000,
+                validateStatus: (s) => s >= 200 && s < 400,
+                headers: { 'User-Agent': USER_AGENT }
+            });
+            return redirect.request?.res?.responseUrl || redirect.headers?.location || targetUrl;
         }
     } catch {}
+    return targetUrl;
+}
+
+// 📰 Responsiv Məqalə Embed Kartı
+function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
+    const hasThumb = thumbnail && !thumbnail.includes('placeholder') && !thumbnail.includes('No+Thumbnail');
+    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
+}
+
+function normalizeEmbedUrl(rawUrl) {
+    const clean = String(rawUrl || '').replace(/\\/g, '/').trim();
+    if (!clean || /^(blob:|javascript:|data:)/i.test(clean)) return '';
+    try {
+        const u = new URL(clean);
+        const host = u.hostname.toLowerCase();
+        if (host.includes('youtu.be')) {
+            const vid = u.pathname.replace(/^\/+/, '').split('/')[0];
+            if (vid) return `https://www.youtube.com/embed/${vid}`;
+        }
+        if (host.includes('youtube.com') && u.pathname === '/watch') {
+            const vid = u.searchParams.get('v');
+            if (vid) return `https://www.youtube.com/embed/${vid}`;
+        }
+        return u.href;
+    } catch {
+        return clean;
+    }
+}
+
+function escapeHtmlAttr(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function buildVideoEmbeds(videoSources = [], limit = 10) {
+    if (!Array.isArray(videoSources) || videoSources.length === 0) {
+        return { combinedHtml: '', items: [] };
+    }
+
+    const items = [];
+    for (const rawUrl of videoSources) {
+        if (items.length >= limit) break;
+        const normalizedUrl = normalizeEmbedUrl(rawUrl);
+        if (!normalizedUrl) continue;
+
+        const safeUrl = escapeHtmlAttr(normalizedUrl);
+        const isDirectMp4 = /\.mp4(\?.*)?$/i.test(normalizedUrl);
+        const isHlsStream = /\.m3u8(\?.*)?$/i.test(normalizedUrl);
+        const type = isDirectMp4 ? 'mp4' : isHlsStream ? 'hls' : 'iframe';
+        const index = items.length;
+
+        let html = '';
+        if (isDirectMp4) {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls preload="metadata" src="${safeUrl}" style="width:100%;height:auto;display:block;background:#000;"></video></div>`;
+        } else if (isHlsStream) {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#0f172a;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:6px;">HLS Video Axını (.m3u8)</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;word-break:break-all;">${safeUrl}</a></div>`;
+        } else {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:12px 0;background:#000;"><iframe src="${safeUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe></div>`;
+        }
+
+        items.push({ index: index + 1, url: normalizedUrl, type, html });
+    }
+
+    return {
+        combinedHtml: items.map(item => item.html).join('\n'),
+        items
+    };
+}
+
+// --------------------------------------------------------------------
+// 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
+// --------------------------------------------------------------------
+async function scrapeUniversalWeb(targetUrl, plan = "basic") {
+    let browser = null;
+    try {
+        browser = await puppeteer.launch({
+            args: [
+                ...chromium.args,
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process',
+                '--no-zygote',
+                '--disable-blink-features=AutomationControlled', // 👈 Bot deteksiyasını söndürür;
+                '--disable-infobars',
+                '--window-size=1920,1080',
+                '--start-maximized',
+                '--hide-scrollbars',
+                '--disable-web-security',
+                '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7', // 👈 Dil uyğunluğu;
+                '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+            ],
+            defaultViewport: { width: 1280, height: 800 },
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
+            ignoreHTTPSErrors: true
+        });
+
+        const page = await browser.newPage();
+        await page.setUserAgent(USER_AGENT);
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'az,tr,en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        });
+
+        // 🛡️ Render 512MB RAM mühafizəsi
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const resource = req.resourceType();
+            const reqUrl = req.url().toLowerCase();
+            const isAdUrl = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'].some(k => reqUrl.includes(k));
+            if (isAdUrl || ['image', 'media', 'font', 'stylesheet'].includes(resource)) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        await page.goto(targetUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 15000
+        });
+
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        // Qısa ilkin gözləmə (JS və DOM-un oturması üçün)
+        const quickDelay = Math.floor(Math.random() * 500) + 700; // 0.7 - 1.2 san;
+        await delay(quickDelay);
+
+        // Cloudflare challenge düşübsə, yalnız o halda bir qədər də gözlə
+        const isChallenge = await page.evaluate(() => {
+            const t = (document.title || '').toLowerCase();
+            const b = (document.body?.innerText || '').toLowerCase();
+            return (
+                t.includes('just a moment') ||
+                t.includes('bir dakika lütfen') ||
+                t.includes('attention required') ||
+                b.includes('checking your browser') ||
+                b.includes('kötü niyetli botlara karşı')
+            );
+        });
+
+        if (isChallenge) {
+            await delay(3500);
+        }
+
+        // Qısa scroll və mouse hərəkəti
+        await page.evaluate(() => {
+            window.scrollBy(0, Math.floor(Math.random() * 250) + 100);
+            window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true,
+                clientX: Math.floor(Math.random() * 400) + 100,
+                clientY: Math.floor(Math.random() * 300) + 100
+            }));
+        });
+
+        await delay(300);
+
+        const extracted = await page.evaluate((pageUrl) => {
+            const out = {
+                head: {
+                    title: '',
+                    description: '',
+                    site_name: '',
+                    canonical: '',
+                    favicon: '',
+                    author: '',
+                    keywords: '',
+                    language: document.documentElement.lang || '',
+                    charset: document.characterSet || 'UTF-8',
+                    open_graph: {},
+                    twitter: {},
+                    all_meta: {},
+                    json_ld: [],
+                },
+                body: {
+                    h1: '',
+                    paragraphs: [],
+                    images: [],
+                    links: [],
+                    videoSources: [],
+                }
+            };
+
+            const titleEl = document.querySelector('title');
+            if (titleEl && titleEl.innerText) {
+                out.head.title = titleEl.innerText.trim();
+            }
+
+            document.querySelectorAll('meta').forEach(meta => {
+                const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
+                const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
+
+                if (!name || !content) return;
+
+                const lowerName = name.toLowerCase();
+                const cleanContent = (lowerName.includes('image') || lowerName.includes('url'))
+                    ? content.replace(/\\/g, '/')
+                    : content;
+
+                if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
+                    out.head.all_meta[name] = cleanContent;
+                }
+
+                if (lowerName.startsWith('og:')) {
+                    out.head.open_graph[lowerName.replace(/^og:/, '')] = cleanContent;
+                }
+                if (lowerName.startsWith('twitter:')) {
+                    out.head.twitter[lowerName.replace(/^twitter:/, '')] = cleanContent;
+                }
+                if (['description', 'og:description', 'twitter:description'].includes(lowerName) && !out.head.description) {
+                    out.head.description = cleanContent;
+                }
+                if (['og:site_name', 'application-name', 'publisher'].includes(lowerName) && !out.head.site_name) {
+                    out.head.site_name = cleanContent;
+                }
+                if (['author', 'article:author', 'twitter:creator'].includes(lowerName) && !out.head.author) {
+                    out.head.author = cleanContent;
+                }
+                if (lowerName === 'keywords' && !out.head.keywords) {
+                    out.head.keywords = cleanContent;
+                }
+            });
+
+            const canonicalEl = document.querySelector('link[rel="canonical"]');
+            if (canonicalEl && canonicalEl.getAttribute('href')) {
+                out.head.canonical = canonicalEl.getAttribute('href');
+            } else if (out.head.open_graph.url) {
+                out.head.canonical = out.head.open_graph.url;
+            }
+
+            const iconEl = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+            if (iconEl && iconEl.getAttribute('href')) {
+                try {
+                    out.head.favicon = new URL(iconEl.getAttribute('href'), pageUrl).href;
+                } catch {
+                    out.head.favicon = iconEl.getAttribute('href');
+                }
+            } else {
+                try {
+                    const u = new URL(pageUrl);
+                    out.head.favicon = `${u.origin}/favicon.ico`;
+                } catch {}
+            }
+
+            document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
+                try {
+                    const raw = script.innerText.trim();
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        out.head.json_ld.push(parsed);
+                        if (!out.head.title && parsed.headline) out.head.title = parsed.headline;
+                        if (!out.head.description && parsed.description) out.head.description = parsed.description;
+                    }
+                } catch {}
+            });
+
+            if (!out.head.title) {
+                out.head.title = out.head.open_graph.title || out.head.twitter.title || '';
+            }
+
+            const h1El = document.querySelector('h1');
+            if (h1El) out.body.h1 = h1El.innerText.trim();
+            if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
+
+            const contentSelectors = [
+                '[itemprop="articleBody"]',
+                '.article-body',
+                '.article_body',
+                '.news-text',
+                '.news_text',
+                '.news-inner',
+                '.news-content',
+                '.post-content',
+                '.article-content',
+                '.entry-content',
+                '.single-content',
+                '.content-text',
+                'main',
+                '[role="main"]',
+                'article',
+            ];
+
+            let contentContainer = null;
+            let bestTextLength = 0;
+
+            for (const selector of contentSelectors) {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => {
+                    const txtLen = (el.innerText || '').trim().length;
+                    if (txtLen > bestTextLength && txtLen >= 150) {
+                        bestTextLength = txtLen;
+                        contentContainer = el;
+                    }
+                });
+                if (contentContainer && bestTextLength >= 250 && !['main', '[role="main"]', 'article'].includes(selector)) {
+                    break;
+                }
+            }
+
+            contentContainer = contentContainer || document.body;
+
+            if (contentContainer) {
+                const clone = contentContainer.cloneNode(true);
+
+                const removeSelectors = [
+                    'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
+                    '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
+                    '.advertisement', '.social-share', '.tags', '.author-box',
+                    '.read-more', '.other-news', '.news-box', 'figure',
+                    '[class*="related"]', '[class*="share"]', '[class*="social"]',
+                    '[class*="banner"]', '[class*="advert"]', '.poll', '.polls'
+                ];
+                clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
+
+                const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
+                const seenTexts = new Set();
+
+                function pushCleanText(rawValue, minLength = 25) {
+                    const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
+                    if (!txt || txt.length < minLength) return;
+
+                    if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
+
+                    const upperTxt = txt.toUpperCase();
+                    const lowerTxt = txt.toLowerCase();
+
+                    const isJunk =
+                        upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||
+                        lowerTxt.includes('hörmətli istifadəçi') ||
+                        lowerTxt.includes('ödənişli') ||
+                        lowerTxt.includes('qeydiyyatdan keçin') ||
+                        lowerTxt.includes('t.me/') ||
+                        lowerTxt.includes('instagram.com') ||
+                        lowerTxt.includes('bizi') ||
+                        lowerTxt.includes('izləyin');
+
+                    if (isJunk || seenTexts.has(txt)) return;
+
+                    seenTexts.add(txt);
+                    out.body.paragraphs.push(txt);
+                }
+
+                // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
+                clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
+                    if (node.closest(excludedSelector)) return;
+                    const isHeading = /^H[1-3]$/.test(node.tagName);
+                    pushCleanText(node.innerText, isHeading ? 8 : 30);
+                });
+
+                // 2. Əgər mətn <p> əvəzinə <br> / <div> ilə bölünübsə
+                if (out.body.paragraphs.length < 2) {
+                    const htmlChunks = clone.innerHTML
+                        .replace(/<br\s*\/?>/gi, '\n')
+                        .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, '\n');
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = htmlChunks;
+                    const lines = (tempDiv.innerText || tempDiv.textContent || '').split('\n');
+                    lines.forEach(line => pushCleanText(line, 30));
+                }
+
+                // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
+                if (out.body.paragraphs.length === 0) {
+                    const headlineSelectors = [
+                        'a[href*="/xeber/"]',
+                        '.titleline > a',
+                        'article h1 a',
+                        'article h2 a',
+                        'article h3 a',
+                        '.news-item a[href]',
+                        '.article-item a[href]',
+                        '.post-item a[href]',
+                        '.story a[href]',
+                        '.card a[href]'
+                    ].join(',');
+
+                    clone.querySelectorAll(headlineSelectors).forEach(link => {
+                        if (link.closest(excludedSelector)) return;
+                        pushCleanText(link.innerText, 8);
+                    });
+                }
+            }
+
+            if (!out.head.description && out.body.paragraphs.length > 0) {
+                out.head.description = out.body.paragraphs[0];
+            }
+
+            const seenImages = new Set();
+
+            const adOrUiSelector = [
+                'header', 'nav', 'footer', 'aside',
+                '[class*="banner"]', '[id*="banner"]',
+                '[class*="advert"]', '[id*="advert"]',
+                '[class*="sponsor"]', '[id*="sponsor"]',
+                '[class*="social"]', '[class*="share"]',
+                '[class*="sidebar"]', '[class*="related"]',
+                '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
+            ].join(',');
+
+            const isJunkImageUrl = (urlStr) => {
+                const lower = (urlStr || '').toLowerCase();
+                return [
+                    'tracker', 'pixel', '.svg', 'placeholder', 'no+thumbnail',
+                    '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
+                    'doubleclick', 'googlesyndication', 'catfish',
+                    'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
+                    'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/'
+                ].some(k => lower.includes(k));
+            };
+
+            const isAdOrUiImage = (imgEl) => {
+                if (!imgEl) return false;
+
+                if (typeof imgEl.matches === 'function' && imgEl.matches(adOrUiSelector)) {
+                    return true;
+                }
+
+                if (typeof imgEl.closest === 'function' && imgEl.closest(adOrUiSelector)) {
+                    return true;
+                }
+
+                const w = parseInt(imgEl.getAttribute('width'), 10);
+                const h = parseInt(imgEl.getAttribute('height'), 10);
+                if ((!isNaN(w) && w > 0 && w <= 60) || (!isNaN(h) && h > 0 && h <= 60)) {
+                    return true;
+                }
+
+                return false;
+            };
+
+            const extractImgSrc = (imgEl) => {
+                const direct =
+                    imgEl.getAttribute('src') ||
+                    imgEl.getAttribute('data-src') ||
+                    imgEl.getAttribute('data-lazy-src') ||
+                    imgEl.getAttribute('data-original');
+
+                if (direct) return direct.trim();
+
+                const srcset = imgEl.getAttribute('srcset') || imgEl.getAttribute('data-srcset');
+                if (srcset) {
+                    const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
+                    if (firstCandidate) return firstCandidate;
+                }
+
+                return '';
+            };
+
+            const addImageFromEl = (imgEl) => {
+                if (isAdOrUiImage(imgEl)) return;
+                const src = extractImgSrc(imgEl);
+                if (!src || src.startsWith('data:image/')) return;
+                try {
+                    const abs = new URL(src, pageUrl).href;
+                    if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
+                        seenImages.add(abs);
+                        out.body.images.push(abs);
+                    }
+                } catch {}
+            };
+
+            const pushImageUrl = (rawUrl) => {
+                if (!rawUrl || rawUrl.startsWith('data:image/')) return;
+                try {
+                    const abs = new URL(rawUrl, pageUrl).href;
+                    if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
+                        seenImages.add(abs);
+                        out.body.images.push(abs);
+                    }
+                } catch {}
+            };
+
+            // 1. Əsas OG / Twitter şəkli
+            const ogImg = out.head.open_graph.image || out.head.twitter.image;
+            if (ogImg) {
+                pushImageUrl(ogImg);
+            }
+
+            // 2. Məqalə konteynerindəki şəkillər
+            if (contentContainer && contentContainer !== document.body) {
+                contentContainer.querySelectorAll('img').forEach(addImageFromEl);
+            }
+
+            // 3. Heç şəkil tapılmayıbsa, JSON-LD NewsArticle şəkillərinə bax (bütün document-i yığmır)
+            if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
+                for (const ld of out.head.json_ld) {
+                    if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
+                        const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
+                        imgs.forEach(pushImageUrl);
+                    }
+                }
+            }
+
+            const seenLinks = new Set();
+            document.querySelectorAll('a').forEach(a => {
+                const href = a.getAttribute('href');
+                const text = a.innerText.trim();
+                if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+                try {
+                    const abs = new URL(href, pageUrl).href;
+                    if (!seenLinks.has(abs)) {
+                        seenLinks.add(abs);
+                        out.body.links.push({ text: text || 'Keçid', url: abs });
+                    }
+                } catch {}
+            });
+
+            const toAbsoluteVideoUrl = (rawSrc) => {
+                if (!rawSrc || typeof rawSrc !== 'string') return null;
+                const trimmed = rawSrc.trim();
+                if (!trimmed || trimmed.startsWith('blob:') || trimmed.startsWith('javascript:')) {
+                    return null;
+                }
+                try {
+                    return new URL(trimmed, pageUrl).href;
+                } catch {
+                    return trimmed;
+                }
+            };
+
+            const isAdVideoUrl = (urlStr) => {
+                if (!urlStr) return true;
+                const lower = urlStr.toLowerCase();
+                return [
+                    'ads.', 'ad.', '.ads.', 'doubleclick', 'googlesyndication',
+                    '/banner', '/banners/', '/ads/', '/vast', '/preroll',
+                    '/midroll', '/postroll', 'catfish'
+                ].some((pattern) => lower.includes(pattern));
+            };
+
+            const isAdElement = (el) => {
+                if (!el || typeof el.closest !== 'function') return false;
+                return Boolean(el.closest([
+                    '[class*="banner"]', '[id*="banner"]',
+                    '[class*="advert"]', '[id*="advert"]',
+                    '[class*="sponsor"]', '[id*="sponsor"]',
+                    '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle'
+                ].join(',')));
+            };
+
+            const pushUniqueVideo = (rawSrc, sourceEl = null) => {
+                if (sourceEl && isAdElement(sourceEl)) return;
+                const fullUrl = toAbsoluteVideoUrl(rawSrc);
+                if (!fullUrl || isAdVideoUrl(fullUrl)) return;
+                if (!out.body.videoSources.includes(fullUrl)) {
+                    out.body.videoSources.push(fullUrl);
+                }
+            };
+
+            const unwantedIframes = [
+                'ct.pinterest.com', 'doubleclick', 'analytics',
+                'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'
+            ];
+
+            document.querySelectorAll('iframe').forEach(iframe => {
+                const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+                const lowerSrc = src.toLowerCase();
+                if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
+                    if (
+                        lowerSrc.includes('youtube') ||
+                        lowerSrc.includes('vimeo') ||
+                        lowerSrc.includes('embed') ||
+                        lowerSrc.includes('.m3u8') ||
+                        lowerSrc.includes('.mp4') ||
+                        lowerSrc.includes('.mpd') ||
+                        lowerSrc.includes('baku.tv')
+                    ) {
+                        pushUniqueVideo(src, iframe);
+                    }
+                }
+            });
+
+            document.querySelectorAll('video, video source').forEach(v => {
+                const src = v.getAttribute('src') || v.getAttribute('data-src');
+                pushUniqueVideo(src, v);
+            });
+
+            // ==========================================
+            // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
+            // ==========================================
+
+            // 1. OpenGraph / Twitter Player teqlərindən video yoxla
+            const ogVideo =
+                out.head.open_graph.video ||
+                out.head.open_graph['video:url'] ||
+                out.head.open_graph['video:secure_url'] ||
+                out.head.twitter.player;
+            pushUniqueVideo(ogVideo);
+
+            // 2. JSON-LD (VideoObject) daxilindən video yoxla
+            out.head.json_ld.forEach(item => {
+                if (item && item['@type'] === 'VideoObject') {
+                    pushUniqueVideo(item.embedUrl || item.contentUrl);
+                }
+            });
+
+            // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd / .mp4 axınlarını yoxla
+            document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
+                const src =
+                    el.getAttribute('data-src') ||
+                    el.getAttribute('data-url') ||
+                    el.getAttribute('data-stream') ||
+                    el.getAttribute('data-hls');
+                if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
+                    pushUniqueVideo(src, el);
+                }
+            });
+
+            // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
+            if (out.body.videoSources.length === 0) {
+                document.querySelectorAll('script').forEach(script => {
+                    const text = script.innerText || '';
+                    const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd|mp4)(?:\?[^"'\s]*)?/i);
+                    if (match && match[0]) {
+                        pushUniqueVideo(match[0]);
+                    }
+                });
+            }
+            // ==========================================
+
+            return out;
+        }, targetUrl);
+
+        await browser.close();
+        browser = null;
+
+        const pageTitle = extracted.head.title || '';
+        const pageDesc = extracted.head.description || '';
+
+        if (
+            pageTitle.includes("Bir dakika lütfen") ||
+            pageTitle.includes("Attention Required") ||
+            pageDesc.includes("kötü niyetli botlara karşı") ||
+            pageTitle.includes("Access Denied")
+        ) {
+            return {
+                success: false,
+                code: 403,
+                status: "error",
+                error: "Target website is protected by Cloudflare or bot verification. Access blocked.",
+                name: pageTitle,
+                description: pageDesc,
+                site_name: new URL(targetUrl).hostname,
+                is_video: false
+            };
+        }
+
+        const limits = {
+            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
+            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
+            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
+            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
+        };
+
+        // 1. Əvvəlcə abzas limitini tətbiq et
+        let finalParagraphs = limits.para === null
+            ? extracted.body.paragraphs
+            : extracted.body.paragraphs.slice(0, limits.para);
+
+        // 2. Mətn yarat
+        let fullText = finalParagraphs.join('\n\n');
+
+        // 3. Simvol limitini tətbiq et
+        if (limits.textLen !== null && fullText.length > limits.textLen) {
+            fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
+        }
+
+        // 4. Abzasları pageContent ilə eyniləşdir
+        finalParagraphs = fullText
+            ? fullText.split('\n\n')
+            : [];
+
+        const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
+        const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
+
+        const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
+        const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
+        const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
+        const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
+
+        const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined')
+            ? extracted.head.canonical
+            : targetUrl;
+
+        const hasVideo = extracted.body.videoSources.length > 0;
+        const videoEmbeds = buildVideoEmbeds(extracted.body.videoSources, 10);
+        let embedHtml = '';
+        if (hasVideo) {
+            embedHtml = videoEmbeds.combinedHtml;
+        } else {
+            embedHtml = generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
+        }
+
+        return {
+            success: true,
+            code: 200,
+            status: "ok",
+            plan_type: plan,
+            name: finalTitle,
+            description: finalDescription,
+            thumbnail_url: thumbnail,
+            favicon_url: extracted.head.favicon,
+            canonical_url: finalCanonical,
+            author: extracted.head.author || null,
+            site_name: finalSiteName,
+            embed_html: embedHtml,
+            is_video: hasVideo,
+            head: {
+                title: finalTitle,
+                description: finalDescription,
+                site_name: finalSiteName,
+                canonical_url: finalCanonical,
+                favicon: extracted.head.favicon,
+                author: extracted.head.author,
+                keywords: extracted.head.keywords,
+                language: extracted.head.language,
+                charset: extracted.head.charset,
+                open_graph: extracted.head.open_graph,
+                twitter: extracted.head.twitter,
+                json_ld: extracted.head.json_ld,
+                all_meta_tags: extracted.head.all_meta
+            },
+            deep_data: {
+                plan: plan,
+                error: null,
+                pageContent: fullText,
+                paragraphs: finalParagraphs,
+                images: finalImages,
+                links: finalLinks,
+                videoSources: extracted.body.videoSources,
+                has_video_sources: hasVideo
+            }
+        };
+
+    } catch (err) {
+        if (browser) {
+            try { await browser.close(); } catch {}
+        }
+        throw err;
+    }
+}
+
+// --------------------------------------------------------------------
+// 🚀 ƏSAS API ENDPOINT (HƏM GET, HƏM DƏ POST DƏSTƏKLƏNİR)
+// --------------------------------------------------------------------
+app.all(['/', '/scrape', '/extract'], async (req, res) => {
+    const startTime = Date.now();
+
+    let targetUrl = req.body?.url || req.query?.url;
+    if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
+
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).json({
+            success: false,
+            code: 400,
+            status: "error",
+            error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
+        });
+    }
+
+    targetUrl = targetUrl.trim();
+    if (!/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = 'https://' + targetUrl;
+    }
+
+    targetUrl = await resolveShortUrl(targetUrl);
+    console.log("Emal olunmuş URL:", targetUrl);
+
+    let parsed;
+    try {
+        parsed = new URL(targetUrl);
+        if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
+            return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
+        }
+
+        if (isPrivateOrBlockedIP(parsed.hostname)) {
+            return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
+        }
+    } catch (e) {
+        return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
+    }
+
+    // ====================================================
+    // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
+    // ====================================================
+    const BLOCKED_SOCIAL_DOMAINS = [
+        'youtube.com', 'youtu.be',
+        'tiktok.com',
+        'instagram.com',
+        'facebook.com',
+        'twitter.com', 'x.com'
+    ];
+
+    const hostnameLower = parsed.hostname.toLowerCase();
+    const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(domain => hostnameLower.includes(domain));
+
+    if (isSocialBlocked) {
+        return res.status(400).json({
+            success: false,
+            code: 400,
+            status: "error",
+            error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
+        });
+    }
+    // ====================================================
+
+    // 💡 PLAN TƏYİNİ
+    const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
+
+    let rawPlan =
+        rapidApiSub ||
+        req.body?.plan ||
+        req.body?.plan_type ||
+        req.body?.planType ||
+        req.query?.plan ||
+        req.query?.plan_type ||
+        req.query?.planType ||
+        "basic";
+
+    let plan = rawPlan.toString().toLowerCase().trim();
+    if (!PLAN_ACCESS[plan]) {
+        plan = "basic";
+    }
+
+    try {
+        const result = await scrapeUniversalWeb(targetUrl, plan);
+
+        result.meta = {
+            plan_type: plan,
+            response_time_ms: Date.now() - startTime,
+            timestamp: new Date().toISOString()
+        };
+
+        return res.status(200).json(result);
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            code: 500,
+            status: "error",
+            error: "Səhifə oxunarkən xəta baş verdi: " + (err.message || "Bilinməyən xəta"),
+            response_time_ms: Date.now() - startTime
+        });
+    }
 });
-                
-              const toAbsoluteVideoUrl = (rawSrc) => {
-                   if (!rawSrc || typeof rawSrc !== 'string') return null;
-                   const trimmed = rawSrc.trim();
-                   if (!trimmed || trimmed.startsWith('blob:') || trimmed.startsWith('javascript:')) {
-                       return null;
-                   }
-                   try {
-                       return new URL(trimmed, pageUrl).href;
-                   } catch {
-                       return trimmed;
-                   }
-               };
-  
-               const isAdVideoUrl = (urlStr) => {
-                    if (!urlStr) return true;
-                    const lower = urlStr.toLowerCase();
-                    return [;
-                        'ads.', 'ad.', '.ads.', 'doubleclick', 'googlesyndication',
-                        '/banner', '/banners/', '/ads/', '/vast', '/preroll',
-                        '/midroll', '/postroll', 'catfish';
-                    ].some((pattern) => lower.includes(pattern));
-                };
-  
-                const isAdElement = (el) => {
-                    if (!el || typeof el.closest !== 'function') return false;
-                    return Boolean(el.closest([;
-                        '[class*="banner"]', '[id*="banner"]',
-                        '[class*="advert"]', '[id*="advert"]',
-                        '[class*="sponsor"]', '[id*="sponsor"]',
-                        '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle';
-                    ].join(',')));
-                };
-  
-                const pushUniqueVideo = (rawSrc, sourceEl = null) => {
-                    if (sourceEl && isAdElement(sourceEl)) return;
-                    const fullUrl = toAbsoluteVideoUrl(rawSrc);
-                    if (!fullUrl || isAdVideoUrl(fullUrl)) return;
-                    if (!out.body.videoSources.includes(fullUrl)) {
-                        out.body.videoSources.push(fullUrl);
-                    }
-                };
-  
-               const unwantedIframes = [;
-                   'ct.pinterest.com', 'doubleclick', 'analytics',
-                   'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az';
-               ];
-  
-               document.querySelectorAll('iframe').forEach(iframe => {
-                   const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
-                   const lowerSrc = src.toLowerCase();
-                   if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
-                       if (
-                           lowerSrc.includes('youtube') ||;
-                           lowerSrc.includes('vimeo') ||;
-                           lowerSrc.includes('embed') ||;
-                           lowerSrc.includes('.m3u8') ||;
-                           lowerSrc.includes('.mp4') ||;
-                           lowerSrc.includes('.mpd') ||;
-                           lowerSrc.includes('baku.tv');
-                       ) {
-                           pushUniqueVideo(src, iframe);
-                       }
-                   }
-               });
-  
-               document.querySelectorAll('video, video source').forEach(v => {
-                   const src = v.getAttribute('src') || v.getAttribute('data-src');
-                   pushUniqueVideo(src, v);
-               });
-  
-               // ==========================================
-               // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
-               // ==========================================
-  
-               // 1. OpenGraph / Twitter Player teqlərindən video yoxla
-               const ogVideo =;
-                   out.head.open_graph.video ||;
-                   out.head.open_graph['video:url'] ||;
-                   out.head.open_graph['video:secure_url'] ||;
-                   out.head.twitter.player;
-               pushUniqueVideo(ogVideo);
-  
-               // 2. JSON-LD (VideoObject) daxilindən video yoxla
-               out.head.json_ld.forEach(item => {
-                   if (item && item['@type'] === 'VideoObject') {
-                       pushUniqueVideo(item.embedUrl || item.contentUrl);
-                   }
-               });
-  
-               // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd / .mp4 axınlarını yoxla
-               document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
-                   const src =;
-                       el.getAttribute('data-src') ||;
-                       el.getAttribute('data-url') ||;
-                       el.getAttribute('data-stream') ||;
-                       el.getAttribute('data-hls');
-                   if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
-                       pushUniqueVideo(src, el);
-                   }
-               });
-  
-               // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
-               if (out.body.videoSources.length === 0) {
-                   document.querySelectorAll('script').forEach(script => {
-                       const text = script.innerText || '';
-                       const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd|mp4)(?:\?[^"'\s]*)?/i);
-                       if (match && match[0]) {
-                           pushUniqueVideo(match[0]);
-                       }
-                   });
-               }
-               // ==========================================
-              
-              return out;
-          }, targetUrl);
-  
-          await browser.close();
-          browser = null;
-  
-          const pageTitle = extracted.head.title || '';
-          const pageDesc = extracted.head.description || '';
-          
-          if (
-              pageTitle.includes("Bir dakika lütfen") || ;
-              pageTitle.includes("Attention Required") || ;
-              pageDesc.includes("kötü niyetli botlara karşı") ||;
-              pageTitle.includes("Access Denied");
-          ) {
-              return {
-                  success: false,
-                  code: 403,
-                  status: "error",
-                  error: "Target website is protected by Cloudflare or bot verification. Access blocked.",
-                  name: pageTitle,
-                  description: pageDesc,
-                  site_name: new URL(targetUrl).hostname,
-                  is_video: false;
-              };
-          }
-  
-          const limits = {
-              para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
-              img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
-              link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
-              textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000;
-          };
-  
-          // 1. Əvvəlcə abzas limitini tətbiq et
-          let finalParagraphs = limits.para === null;
-              ? extracted.body.paragraphs;
-              : extracted.body.paragraphs.slice(0, limits.para);
-  
-          // 2. Mətn yarat
-          let fullText = finalParagraphs.join('\n\n');
-  
-          // 3. Simvol limitini tətbiq et
-          if (limits.textLen !== null && fullText.length > limits.textLen) {
-              fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
-          }
-  
-          // 4. Abzasları pageContent ilə eyniləşdir
-          finalParagraphs = fullText;
-              ? fullText.split('\n\n');
-              : [];
-  
-          const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
-          const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
-  
-          const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
-          const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
-          const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
-          const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
-  
-          const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined') ;
-              ? extracted.head.canonical ;
-              : targetUrl;
-  
-          const hasVideo = extracted.body.videoSources.length > 0;
-          const videoEmbeds = buildVideoEmbeds(extracted.body.videoSources, 10);
-          let embedHtml = '';
-          if (hasVideo) {
-              embedHtml = videoEmbeds.combinedHtml;
-          } else {
-              embedHtml = generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
-          }
-  
-          return {
-              success: true,
-              code: 200,
-              status: "ok",
-              plan_type: plan,
-              name: finalTitle,
-              description: finalDescription,
-              thumbnail_url: thumbnail,
-              favicon_url: extracted.head.favicon,
-              canonical_url: finalCanonical,
-              author: extracted.head.author || null,
-              site_name: finalSiteName,
-              embed_html: embedHtml,
-              is_video: hasVideo,
-              head: {
-                  title: finalTitle,
-                  description: finalDescription,
-                  site_name: finalSiteName,
-                  canonical_url: finalCanonical,
-                  favicon: extracted.head.favicon,
-                  author: extracted.head.author,
-                  keywords: extracted.head.keywords,
-                  language: extracted.head.language,
-                  charset: extracted.head.charset,
-                  open_graph: extracted.head.open_graph,
-                  twitter: extracted.head.twitter,
-                  json_ld: extracted.head.json_ld,
-                  all_meta_tags: extracted.head.all_meta;
-              },
-              deep_data: {
-                  plan: plan,
-                  error: null,
-                  pageContent: fullText,
-                  paragraphs: finalParagraphs,
-                  images: finalImages,
-                  links: finalLinks,
-                  videoSources: extracted.body.videoSources,
-                  has_video_sources: hasVideo;
-              }
-          };
-  
-      } catch (err) {
-          if (browser) {
-              try { await browser.close(); } catch {}
-          }
-          throw err;
-      }
-  }
-  
-  // --------------------------------------------------------------------
-  // 🚀 ƏSAS API ENDPOINT (HƏM GET, HƏM DƏ POST DƏSTƏKLƏNİR)
-  // --------------------------------------------------------------------
-  app.all(['/', '/scrape', '/extract'], async (req, res) => {
-      const startTime = Date.now();
-  
-      let targetUrl = req.body?.url || req.query?.url;
-      if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
-  
-      if (!targetUrl || typeof targetUrl !== 'string') {
-          return res.status(400).json({
-              success: false, 
-              code: 400, 
-              status: "error",
-              error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })";
-          });
-      }
-  
-      targetUrl = targetUrl.trim();
-      if (!/^https?:\/\//i.test(targetUrl)) {
-          targetUrl = 'https://' + targetUrl;
-      }
-  
-      targetUrl = await resolveShortUrl(targetUrl);
-      console.log("Emal olunmuş URL:", targetUrl);
-  
-      let parsed;
-      try {
-          parsed = new URL(targetUrl);
-          if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
-              return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
-          }
-  
-          if (isPrivateOrBlockedIP(parsed.hostname)) {
-              return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
-          }
-      } catch (e) {
-          return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
-      }
-  
-      // ====================================================
-      // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
-      // ====================================================
-      const BLOCKED_SOCIAL_DOMAINS = [;
-          'youtube.com', 'youtu.be', 
-          'tiktok.com', 
-          'instagram.com', 
-          'facebook.com', 
-          'twitter.com', 'x.com';
-      ];
-  
-      const hostnameLower = parsed.hostname.toLowerCase();
-      const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(domain => hostnameLower.includes(domain));
-      
-      if (isSocialBlocked) {
-          return res.status(400).json({
-              success: false,
-              code: 400,
-              status: "error",
-              error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles.";
-          });
-      }
-      // ====================================================
-  
-      // 💡 PLAN TƏYİNİ
-      const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
-      
-      let rawPlan = ;
-          rapidApiSub || ;
-          req.body?.plan || ;
-          req.body?.plan_type || ;
-          req.body?.planType || ;
-          req.query?.plan || ;
-          req.query?.plan_type || ;
-          req.query?.planType || ;
-          "basic";
-  
-      let plan = rawPlan.toString().toLowerCase().trim();
-      if (!PLAN_ACCESS[plan]) {
-          plan = "basic";
-      }
-      
-      try {
-          const result = await scrapeUniversalWeb(targetUrl, plan);
-  
-          result.meta = {
-              plan_type: plan,
-              response_time_ms: Date.now() - startTime,
-              timestamp: new Date().toISOString();
-          };
-  
-          return res.status(200).json(result);
-  
-      } catch (err) {
-          return res.status(500).json({
-              success: false,
-             code: 500,
-             status: "error",
-             error: "Səhifə oxunarkən xəta baş verdi: " + (err.message || "Bilinməyən xəta"),
-             response_time_ms: Date.now() - startTime;
-         });
-     }
- });
- 
- // --------------------------------------------------------------------
- // 🚀 SERVERİ BAŞLAT
- // --------------------------------------------------------------------
- const PORT = process.env.PORT || 3000;
- app.listen(PORT, '0.0.0.0', () => {
-     console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
- });
+
+// --------------------------------------------------------------------
+// 🚀 SERVERİ BAŞLAT
+// --------------------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
+});
