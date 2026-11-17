@@ -590,11 +590,11 @@
               };
   
               const extractImgSrc = (imgEl) => {
-                  const direct =;
-                      imgEl.getAttribute('src') ||;
-                      imgEl.getAttribute('data-src') ||;
-                      imgEl.getAttribute('data-lazy-src') ||;
-                      imgEl.getAttribute('data-original');
+                  const direct =
+                      imgEl.getAttribute('src') ||
+                      imgEl.getAttribute('data-src') ||
+                      imgEl.getAttribute('data-lazy-src') ||
+                      imgEl.getAttribute('data-original')
   
                   if (direct) return direct.trim();
   
