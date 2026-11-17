@@ -638,8 +638,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }
 
             // 2. Məqalə konteynerindəki şəkillər
-            if (contentContainer && contentContainer !== document.body) {
-                contentContainer.querySelectorAll('img').forEach(addImageFromEl);
+            const imageRoot = contentContainer || document.body;
+            if (imageRoot) {
+                imageRoot.querySelectorAll('img').forEach(addImageFromEl);
             }
 
             // 3. Heç şəkil tapılmayıbsa, JSON-LD NewsArticle şəkillərinə bax (bütün document-i yığmır)
