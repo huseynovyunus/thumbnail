@@ -332,7 +332,7 @@
                       open_graph: {},
                       twitter: {},
                       all_meta: {},
-                      json_ld: [];
+                      json_ld: [],
                   },
                   body: {
                       h1: '',
