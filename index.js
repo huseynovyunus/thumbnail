@@ -261,7 +261,7 @@
           await page.setUserAgent(USER_AGENT);
           await page.setExtraHTTPHeaders({
               'Accept-Language': 'az,tr,en-US,en;q=0.9',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
           });
   
           // 🛡️ Render 512MB RAM mühafizəsi
