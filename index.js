@@ -565,7 +565,7 @@
                       '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
                       'doubleclick', 'googlesyndication', 'catfish',
                       'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
-                      'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/';
+                      'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/'
                   ].some(k => lower.includes(k));
               };
   
