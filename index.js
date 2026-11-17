@@ -292,7 +292,7 @@
           const isChallenge = await page.evaluate(() => {
               const t = (document.title || '').toLowerCase();
               const b = (document.body?.innerText || '').toLowerCase();
-              return (;
+              return (
                   t.includes('just a moment') ||;
                   t.includes('bir dakika lütfen') ||;
                   t.includes('attention required') ||;
