@@ -353,11 +353,11 @@
       const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
   
       if (!name || !content) return;
-  
-      const lowerName = name.toLowerCase();
-      const cleanContent = lowerName.includes('image') || lowerName.includes('url');
-          ? content.replace(/\\/g, '/');
-          : content;
+
+      const lowerName = name.toLowerCase();
+      const cleanContent = (lowerName.includes('image') || lowerName.includes('url'))
+          ? content.replace(/\\/g, '/')
+          : content;
   
       if (!lowerName.includes('csrf') && !lowerName.includes('xsrf')) {
           out.head.all_meta[name] = cleanContent;
