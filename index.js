@@ -279,7 +279,7 @@
   
           await page.goto(targetUrl, {
               waitUntil: 'domcontentloaded',
-              timeout: 15000;
+              timeout: 15000
           });
   
           const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
