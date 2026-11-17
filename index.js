@@ -464,7 +464,7 @@
               if (contentContainer) {
                   const clone = contentContainer.cloneNode(true);
   
-                  const removeSelectors = [;
+                  const removeSelectors = [
                       'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
                       '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
                       '.advertisement', '.social-share', '.tags', '.author-box',
