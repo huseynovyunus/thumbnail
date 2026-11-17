@@ -132,11 +132,11 @@
   
   function cleanText(text) {
       if (!text || typeof text !== 'string') return text;
-      return text;
-          .replace(/\[\d+\]/g, '');
-          .replace(/\[[a-zA-Z]\]/g, '');
-          .replace(/[\u200E\u200F\u200B\uFEFF]/g, '');
-          .replace(/\s+/g, ' ');
+      return text
+          .replace(/\[\d+\]/g, '')
+          .replace(/\[[a-zA-Z]\]/g, '')
+          .replace(/[\u200E\u200F\u200B\uFEFF]/g, '')
+          .replace(/\s+/g, ' ')
           .trim();
   }
   
