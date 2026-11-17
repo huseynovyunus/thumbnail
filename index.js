@@ -1,3 +1,5 @@
+
+
   // ====================================================================
   // 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
   // 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
@@ -682,20 +684,20 @@ document.querySelectorAll('a').forEach(a => {
                const isAdVideoUrl = (urlStr) => {
                     if (!urlStr) return true;
                     const lower = urlStr.toLowerCase();
-                    return [;
+                    return [
                         'ads.', 'ad.', '.ads.', 'doubleclick', 'googlesyndication',
                         '/banner', '/banners/', '/ads/', '/vast', '/preroll',
-                        '/midroll', '/postroll', 'catfish';
+                        '/midroll', '/postroll', 'catfish'
                     ].some((pattern) => lower.includes(pattern));
                 };
   
                 const isAdElement = (el) => {
                     if (!el || typeof el.closest !== 'function') return false;
-                    return Boolean(el.closest([;
+                    return Boolean(el.closest([
                         '[class*="banner"]', '[id*="banner"]',
                         '[class*="advert"]', '[id*="advert"]',
                         '[class*="sponsor"]', '[id*="sponsor"]',
-                        '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle';
+                        '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle'
                     ].join(',')));
                 };
   
@@ -708,9 +710,9 @@ document.querySelectorAll('a').forEach(a => {
                     }
                 };
   
-               const unwantedIframes = [;
+               const unwantedIframes = [
                    'ct.pinterest.com', 'doubleclick', 'analytics',
-                   'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az';
+                   'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'
                ];
   
                document.querySelectorAll('iframe').forEach(iframe => {
@@ -718,13 +720,13 @@ document.querySelectorAll('a').forEach(a => {
                    const lowerSrc = src.toLowerCase();
                    if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
                        if (
-                           lowerSrc.includes('youtube') ||;
-                           lowerSrc.includes('vimeo') ||;
-                           lowerSrc.includes('embed') ||;
-                           lowerSrc.includes('.m3u8') ||;
-                           lowerSrc.includes('.mp4') ||;
-                           lowerSrc.includes('.mpd') ||;
-                           lowerSrc.includes('baku.tv');
+                           lowerSrc.includes('youtube') ||
+                           lowerSrc.includes('vimeo') ||
+                           lowerSrc.includes('embed') ||
+                           lowerSrc.includes('.m3u8') ||
+                           lowerSrc.includes('.mp4') ||
+                           lowerSrc.includes('.mpd') ||
+                           lowerSrc.includes('baku.tv')
                        ) {
                            pushUniqueVideo(src, iframe);
                        }
@@ -741,11 +743,11 @@ document.querySelectorAll('a').forEach(a => {
                // ==========================================
   
                // 1. OpenGraph / Twitter Player teqlərindən video yoxla
-               const ogVideo =;
-                   out.head.open_graph.video ||;
-                   out.head.open_graph['video:url'] ||;
-                   out.head.open_graph['video:secure_url'] ||;
-                   out.head.twitter.player;
+               const ogVideo =
+                   out.head.open_graph.video ||
+                   out.head.open_graph['video:url'] ||
+                   out.head.open_graph['video:secure_url'] ||
+                   out.head.twitter.player
                pushUniqueVideo(ogVideo);
   
                // 2. JSON-LD (VideoObject) daxilindən video yoxla
@@ -757,11 +759,11 @@ document.querySelectorAll('a').forEach(a => {
   
                // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd / .mp4 axınlarını yoxla
                document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
-                   const src =;
-                       el.getAttribute('data-src') ||;
-                       el.getAttribute('data-url') ||;
-                       el.getAttribute('data-stream') ||;
-                       el.getAttribute('data-hls');
+                   const src =
+                       el.getAttribute('data-src') ||
+                       el.getAttribute('data-url') ||
+                       el.getAttribute('data-stream') ||
+                       el.getAttribute('data-hls')
                    if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
                        pushUniqueVideo(src, el);
                    }
@@ -789,10 +791,10 @@ document.querySelectorAll('a').forEach(a => {
           const pageDesc = extracted.head.description || '';
           
           if (
-              pageTitle.includes("Bir dakika lütfen") || ;
-              pageTitle.includes("Attention Required") || ;
-              pageDesc.includes("kötü niyetli botlara karşı") ||;
-              pageTitle.includes("Access Denied");
+              pageTitle.includes("Bir dakika lütfen") ||
+              pageTitle.includes("Attention Required") ||
+              pageDesc.includes("kötü niyetli botlara karşı") ||
+              pageTitle.includes("Access Denied")
           ) {
               return {
                   success: false,
@@ -802,7 +804,7 @@ document.querySelectorAll('a').forEach(a => {
                   name: pageTitle,
                   description: pageDesc,
                   site_name: new URL(targetUrl).hostname,
-                  is_video: false;
+                  is_video: false
               };
           }
   
@@ -810,7 +812,7 @@ document.querySelectorAll('a').forEach(a => {
               para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
               img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
               link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
-              textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000;
+              textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
           };
   
           // 1. Əvvəlcə abzas limitini tətbiq et
@@ -839,8 +841,8 @@ document.querySelectorAll('a').forEach(a => {
           const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
           const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
   
-          const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined') ;
-              ? extracted.head.canonical ;
+          const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined')
+              ? extracted.head.canonical
               : targetUrl;
   
           const hasVideo = extracted.body.videoSources.length > 0;
@@ -879,7 +881,7 @@ document.querySelectorAll('a').forEach(a => {
                   open_graph: extracted.head.open_graph,
                   twitter: extracted.head.twitter,
                   json_ld: extracted.head.json_ld,
-                  all_meta_tags: extracted.head.all_meta;
+                  all_meta_tags: extracted.head.all_meta
               },
               deep_data: {
                   plan: plan,
@@ -889,7 +891,7 @@ document.querySelectorAll('a').forEach(a => {
                   images: finalImages,
                   links: finalLinks,
                   videoSources: extracted.body.videoSources,
-                  has_video_sources: hasVideo;
+                  has_video_sources: hasVideo
               }
           };
   
@@ -915,7 +917,7 @@ document.querySelectorAll('a').forEach(a => {
               success: false, 
               code: 400, 
               status: "error",
-              error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })";
+              error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
           });
       }
   
@@ -944,12 +946,12 @@ document.querySelectorAll('a').forEach(a => {
       // ====================================================
       // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
       // ====================================================
-      const BLOCKED_SOCIAL_DOMAINS = [;
+      const BLOCKED_SOCIAL_DOMAINS = [
           'youtube.com', 'youtu.be', 
           'tiktok.com', 
           'instagram.com', 
           'facebook.com', 
-          'twitter.com', 'x.com';
+          'twitter.com', 'x.com'
       ];
   
       const hostnameLower = parsed.hostname.toLowerCase();
@@ -960,7 +962,7 @@ document.querySelectorAll('a').forEach(a => {
               success: false,
               code: 400,
               status: "error",
-              error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles.";
+              error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
           });
       }
       // ====================================================
@@ -968,14 +970,14 @@ document.querySelectorAll('a').forEach(a => {
       // 💡 PLAN TƏYİNİ
       const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
       
-      let rawPlan = ;
-          rapidApiSub || ;
-          req.body?.plan || ;
-          req.body?.plan_type || ;
-          req.body?.planType || ;
-          req.query?.plan || ;
-          req.query?.plan_type || ;
-          req.query?.planType || ;
+      let rawPlan =
+          rapidApiSub ||
+          req.body?.plan ||
+          req.body?.plan_type ||
+          req.body?.planType ||
+          req.query?.plan ||
+          req.query?.plan_type ||
+          req.query?.planType ||
           "basic";
   
       let plan = rawPlan.toString().toLowerCase().trim();
@@ -989,7 +991,7 @@ document.querySelectorAll('a').forEach(a => {
           result.meta = {
               plan_type: plan,
               response_time_ms: Date.now() - startTime,
-              timestamp: new Date().toISOString();
+              timestamp: new Date().toISOString()
           };
   
           return res.status(200).json(result);
@@ -1000,7 +1002,7 @@ document.querySelectorAll('a').forEach(a => {
              code: 500,
              status: "error",
              error: "Səhifə oxunarkən xəta baş verdi: " + (err.message || "Bilinməyən xəta"),
-             response_time_ms: Date.now() - startTime;
+             response_time_ms: Date.now() - startTime
          });
      }
  });
@@ -1012,3 +1014,4 @@ document.querySelectorAll('a').forEach(a => {
  app.listen(PORT, '0.0.0.0', () => {
      console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
  });
+
