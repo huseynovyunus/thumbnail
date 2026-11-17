@@ -548,7 +548,7 @@
   
               const seenImages = new Set();
   
-              const adOrUiSelector = [;
+              const adOrUiSelector = [
                   'header', 'nav', 'footer', 'aside',
                   '[class*="banner"]', '[id*="banner"]',
                   '[class*="advert"]', '[id*="advert"]',
