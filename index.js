@@ -522,18 +522,18 @@
   
                   // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
                   if (out.body.paragraphs.length === 0) {
-                      const headlineSelectors = [;
-                          'a[href*="/xeber/"]',
-                          '.titleline > a',
-                          'article h1 a',
-                          'article h2 a',
-                          'article h3 a',
-                          '.news-item a[href]',
-                          '.article-item a[href]',
-                          '.post-item a[href]',
-                          '.story a[href]',
-                          '.card a[href]';
-                      ].join(',');
+                      const headlineSelectors = [;const headlineSelectors = [
+    'a[href*="/xeber/"]',
+    '.titleline > a',
+    'article h1 a',
+    'article h2 a',
+    'article h3 a',
+    '.news-item a[href]',
+    '.article-item a[href]',
+    '.post-item a[href]',
+    '.story a[href]',
+    '.card a[href]'
+].join(',');
   
                       clone.querySelectorAll(headlineSelectors).forEach(link => {
                           if (link.closest(excludedSelector)) return;
