@@ -486,7 +486,7 @@
                       const upperTxt = txt.toUpperCase();
                       const lowerTxt = txt.toLowerCase();
   
-                      const isJunk =;
+                      const isJunk =
                           upperTxt.includes('ƏMƏLİYYAT İCRA OLUNUR') ||;
                           lowerTxt.includes('hörmətli istifadəçi') ||;
                           lowerTxt.includes('ödənişli') ||;
