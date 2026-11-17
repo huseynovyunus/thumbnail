@@ -254,7 +254,7 @@
               defaultViewport: { width: 1280, height: 800 },
               executablePath: await chromium.executablePath(),
               headless: chromium.headless,
-              ignoreHTTPSErrors: true;
+              ignoreHTTPSErrors: true
           });
   
           const page = await browser.newPage();
