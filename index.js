@@ -338,6 +338,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     h1: '',
                     paragraphs: [],
                     images: [],
+                    classifiedImages: [],
                     links: [],
                     videoSources: [],
                 }
@@ -465,12 +466,13 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 const clone = contentContainer.cloneNode(true);
 
                 const removeSelectors = [
-                    'script', 'style', 'nav', 'header', 'footer', 'form', 'aside',
+                    'script', 'style', 'noscript', 'iframe', 'svg',
+                    'nav', 'header', 'footer', 'form', 'aside',
                     '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
                     '.advertisement', '.social-share', '.tags', '.author-box',
                     '.read-more', '.other-news', '.news-box', 'figure',
                     '[class*="related"]', '[class*="share"]', '[class*="social"]',
-                    '[class*="banner"]', '[class*="advert"]', '.poll', '.polls'
+                    '[class*="banner"]', '[class*="advert"]', '.poll', '.polls', '.pagination'
                 ];
                 clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
 
@@ -481,7 +483,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
                     if (!txt || txt.length < minLength) return;
 
-                    if (/^(keçid|daha ətraflı|read more|login)$/i.test(txt)) return;
+                    if (/<[a-z][\s\S]*>/i.test(txt)) return;
+                    if (/^\d+$/.test(txt)) return;
+                    if (/^(keçid|daha ətraflı|read more|login|ilk|son)$/i.test(txt)) return;
 
                     const upperTxt = txt.toUpperCase();
                     const lowerTxt = txt.toLowerCase();
@@ -548,107 +552,153 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 
             const seenImages = new Set();
 
-            const adOrUiSelector = [
-                'header', 'nav', 'footer', 'aside',
+            const adSelector = [
                 '[class*="banner"]', '[id*="banner"]',
                 '[class*="advert"]', '[id*="advert"]',
                 '[class*="sponsor"]', '[id*="sponsor"]',
-                '[class*="social"]', '[class*="share"]',
-                '[class*="sidebar"]', '[class*="related"]',
-                '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle'
+                '[class*="reklam"]', '[id*="reklam"]',
+                '.ads', '.ad', '.ad-box', '.ad-wrapper', 'ins.adsbygoogle', '[data-ad]'
             ].join(',');
 
-            const isJunkImageUrl = (urlStr) => {
+            const nonArticleZoneSelector = [
+                'aside', '[class*="sidebar"]', '[class*="related"]',
+                '.other-news', '.read-more', '.widgets'
+            ].join(',');
+
+            const isSystemJunkUrl = (urlStr) => {
                 const lower = (urlStr || '').toLowerCase();
                 return [
-                    'tracker', 'pixel', '.svg', 'placeholder', 'no+thumbnail',
-                    '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor',
-                    'doubleclick', 'googlesyndication', 'catfish',
-                    'social2/', '/social/', 'vote_b.gif', 'dloader.gif',
-                    'loader.gif', 'spinner', 'favicon', 'sprite', '/icon', 'icons/'
+                    'tracker', 'pixel', 'placeholder', 'no+thumbnail',
+                    'nophoto', 'no-photo', 'no_photo', 'default-image', 'default_image',
+                    'blank.gif', 'atrk.gif', 'facebook.com/tr',
+                    'vote_b.gif', 'dloader.gif', 'loader.gif', 'spinner'
                 ].some(k => lower.includes(k));
             };
 
-            const isAdOrUiImage = (imgEl) => {
-                if (!imgEl) return false;
+            const classifyImage = (absUrl, imgEl = null, source = 'dom') => {
+                const lowerUrl = absUrl.toLowerCase();
+                const altText = (imgEl?.getAttribute('alt') || '').toLowerCase();
+                const clsAndId = `${imgEl?.className || ''} ${imgEl?.id || ''}`.toLowerCase();
+                const w = parseInt(imgEl?.getAttribute('width'), 10);
+                const h = parseInt(imgEl?.getAttribute('height'), 10);
 
-                if (typeof imgEl.matches === 'function' && imgEl.matches(adOrUiSelector)) {
-                    return true;
+                // 1. ADVERTISEMENT (Reklam)
+                const adUrlKeywords = [
+                    '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor', 'reklam',
+                    'doubleclick', 'googlesyndication', 'adfox', 'ads2.imv.az', 'catfish', 'promo'
+                ];
+                if (adUrlKeywords.some(k => lowerUrl.includes(k))) return 'advertisement';
+                if (imgEl && (imgEl.matches?.(adSelector) || imgEl.closest?.(adSelector))) return 'advertisement';
+
+                const adDimensions = ['728x90', '300x250', '970x250', '970x90', '160x600', '320x50', '468x60', '240x400'];
+                if (!isNaN(w) && !isNaN(h) && adDimensions.includes(`${w}x${h}`)) return 'advertisement';
+
+                const parentLink = imgEl?.closest?.('a[href]');
+                if (parentLink) {
+                    try {
+                        const linkHref = parentLink.getAttribute('href') || '';
+                        const linkUrl = new URL(linkHref, pageUrl);
+                        const pageHost = new URL(pageUrl).hostname.replace(/^www\./, '');
+                        const linkHost = linkUrl.hostname.replace(/^www\./, '');
+                        const isAdRedirect = /(utm_source|utm_campaign|aff_id|click_id|reklam|banner|redirect)/i.test(linkUrl.href);
+                        const isExternalSponsor = linkHost && linkHost !== pageHost && !/(cdn|static|media|img|storage)/i.test(linkHost);
+                        if (isAdRedirect || isExternalSponsor) {
+                            return 'advertisement';
+                        }
+                    } catch {}
                 }
 
-                if (typeof imgEl.closest === 'function' && imgEl.closest(adOrUiSelector)) {
-                    return true;
+                // 2. ICON (İkon)
+                const iconKeywords = [
+                    'favicon', 'sprite', '/icon', 'icons/', '.ico', 'social2/', '/social/',
+                    'share', 'emoji', 'whatsapp', 'telegram', 'facebook', 'instagram', 'twitter', 'youtube'
+                ];
+                if (iconKeywords.some(k => lowerUrl.includes(k) || clsAndId.includes(k))) return 'icon';
+                if ((!isNaN(w) && w > 0 && w <= 48) || (!isNaN(h) && h > 0 && h <= 48)) return 'icon';
+
+                // 3. LOGO
+                const logoKeywords = ['logo', 'brand', 'watermark', 'emblem', 'site-logo'];
+                if (logoKeywords.some(k => lowerUrl.includes(k) || altText.includes(k) || clsAndId.includes(k))) {
+                    return 'logo';
+                }
+                if (imgEl && imgEl.closest?.('header, nav, footer')) {
+                    return 'logo';
                 }
 
-                const w = parseInt(imgEl.getAttribute('width'), 10);
-                const h = parseInt(imgEl.getAttribute('height'), 10);
-                if ((!isNaN(w) && w > 0 && w <= 60) || (!isNaN(h) && h > 0 && h <= 60)) {
-                    return true;
+                // 4. Yan bloklardakı ("oxşar xəbərlər", "sidebar") şəkilləri məqalədən ayır
+                if (imgEl && imgEl.closest?.(nonArticleZoneSelector) && source !== 'og_meta') {
+                    return 'advertisement';
                 }
 
-                return false;
+                return 'article';
+            };
+
+            const registerImage = (rawUrl, imgEl = null, source = 'dom') => {
+                if (!rawUrl || rawUrl.startsWith('data:image/')) return;
+                try {
+                    const abs = new URL(rawUrl, pageUrl).href;
+                    if (isSystemJunkUrl(abs) || seenImages.has(abs)) return;
+
+                    seenImages.add(abs);
+                    const imageType = classifyImage(abs, imgEl, source);
+                    const alt = (imgEl?.getAttribute('alt') || '').trim() || null;
+
+                    out.body.classifiedImages.push({
+                        url: abs,
+                        image_type: imageType,
+                        alt,
+                        source
+                    });
+
+                    if (imageType === 'article') {
+                        out.body.images.push(abs);
+                    }
+                } catch {}
             };
 
             const extractImgSrc = (imgEl) => {
-                const direct =
-                    imgEl.getAttribute('src') ||
-                    imgEl.getAttribute('data-src') ||
-                    imgEl.getAttribute('data-lazy-src') ||
-                    imgEl.getAttribute('data-original');
-
-                if (direct) return direct.trim();
+                const attrs = ['src', 'data-src', 'data-lazy-src', 'data-original', 'data-ll-src', 'data-image', 'data-url'];
+                for (const attr of attrs) {
+                    const val = imgEl.getAttribute(attr);
+                    if (val && val.trim() && !val.trim().startsWith('data:image/')) return val.trim();
+                }
 
                 const srcset = imgEl.getAttribute('srcset') || imgEl.getAttribute('data-srcset');
                 if (srcset) {
                     const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
-                    if (firstCandidate) return firstCandidate;
+                    if (firstCandidate && !firstCandidate.startsWith('data:image/')) return firstCandidate;
                 }
 
                 return '';
             };
 
-            const addImageFromEl = (imgEl) => {
-                if (isAdOrUiImage(imgEl)) return;
-                const src = extractImgSrc(imgEl);
-                if (!src || src.startsWith('data:image/')) return;
-                try {
-                    const abs = new URL(src, pageUrl).href;
-                    if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
-                        seenImages.add(abs);
-                        out.body.images.push(abs);
-                    }
-                } catch {}
-            };
-
-            const pushImageUrl = (rawUrl) => {
-                if (!rawUrl || rawUrl.startsWith('data:image/')) return;
-                try {
-                    const abs = new URL(rawUrl, pageUrl).href;
-                    if (!isJunkImageUrl(abs) && !seenImages.has(abs)) {
-                        seenImages.add(abs);
-                        out.body.images.push(abs);
-                    }
-                } catch {}
-            };
-
             // 1. Əsas OG / Twitter şəkli
             const ogImg = out.head.open_graph.image || out.head.twitter.image;
             if (ogImg) {
-                pushImageUrl(ogImg);
+                registerImage(ogImg, null, 'og_meta');
             }
 
             // 2. Məqalə konteynerindəki şəkillər
-            const imageRoot = contentContainer || document.body;
-            if (imageRoot) {
-                imageRoot.querySelectorAll('img').forEach(addImageFromEl);
+            const isDedicatedArticleContainer = contentContainer && contentContainer !== document.body;
+            if (isDedicatedArticleContainer) {
+                contentContainer.querySelectorAll('img').forEach(imgEl => {
+                    const src = extractImgSrc(imgEl);
+                    if (src) registerImage(src, imgEl, 'article_body');
+                });
             }
 
-            // 3. Heç şəkil tapılmayıbsa, JSON-LD NewsArticle şəkillərinə bax (bütün document-i yığmır)
-            if (out.body.images.length === 0 && Array.isArray(out.head.json_ld)) {
+            // 3. Səhifənin qalan hissəsindəki şəkillər (reklam, loqo, ikon təsnifatı və lent səhifələri üçün)
+            document.body.querySelectorAll('img').forEach(imgEl => {
+                const src = extractImgSrc(imgEl);
+                if (src) registerImage(src, imgEl, isDedicatedArticleContainer ? 'page_other' : 'dom');
+            });
+
+            // 4. JSON-LD NewsArticle şəkilləri
+            if (Array.isArray(out.head.json_ld)) {
                 for (const ld of out.head.json_ld) {
                     if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
                         const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
-                        imgs.forEach(pushImageUrl);
+                        imgs.forEach(u => registerImage(typeof u === 'string' ? u : u?.url, null, 'json_ld'));
                     }
                 }
             }
@@ -832,10 +882,20 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             ? fullText.split('\n\n')
             : [];
 
-        const finalImages = limits.img === null ? extracted.body.images : extracted.body.images.slice(0, limits.img);
+        const rawImages = extracted.body.images || [];
+        const rawClassified = extracted.body.classifiedImages || [];
+
+        const finalImages = limits.img === null ? rawImages : rawImages.slice(0, limits.img);
+        const finalClassifiedImages = limits.img === null ? rawClassified : rawClassified.slice(0, limits.img);
         const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
 
-        const thumbnail = extracted.head.open_graph.image || extracted.head.twitter.image || (finalImages.length > 0 ? finalImages[0] : null);
+        // OG şəkli nophoto, placeholder və ya reklam banneridirsə, real məqalə şəklini (finalImages[0]) götürür
+        const rawOgThumb = extracted.head.open_graph.image || extracted.head.twitter.image || '';
+        const isBadThumb = /nophoto|no-photo|no_photo|placeholder|no\+thumbnail|banner|\/ads\/|\/adv\//i.test(rawOgThumb);
+        const thumbnail = (!isBadThumb && rawOgThumb)
+            ? rawOgThumb
+            : (finalImages.length > 0 ? finalImages[0] : (rawOgThumb || null));
+
         const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
         const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
         const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
@@ -882,7 +942,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 json_ld: extracted.head.json_ld,
                 all_meta_tags: extracted.head.all_meta
             },
-            deep_data: {
+           deep_data: {
                 plan: plan,
                 error: null,
                 pageContent: fullText,
