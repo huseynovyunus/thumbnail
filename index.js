@@ -5,8 +5,9 @@
 
 require('dotenv').config();
 
+const crypto = require('crypto');
 const express = require('express');
-const cors = require('cors'); // 👈 1. Bunu əlavə et;
+const cors = require('cors');
 const axios = require('axios');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
@@ -15,11 +16,7 @@ const chromium = require('@sparticuz/chromium');
 
 const app = express();
 
-app.get("/", (req, res) => {
-    res.sendFile(require("path").join(__dirname, "public", "index.html"));
-});
-
-app.use(cors()); // 👈 2. Bütün origin-lərə icazə vermək üçün aktivləşdir;
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -63,6 +60,53 @@ app.use((req, res, next) => {
         }
     }, 2000);
 });
+
+// --------------------------------------------------------------------
+// 🔐 RAPIDAPI PROXY SECRET & ADMIN TEST AUTENTİFİKASİYASI
+// --------------------------------------------------------------------
+function safeCompareSecret(provided, expected) {
+    if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+    if (!provided || !expected) return false;
+
+    const bufProvided = Buffer.from(provided, 'utf8');
+    const bufExpected = Buffer.from(expected, 'utf8');
+
+    if (bufProvided.length !== bufExpected.length) return false;
+    return crypto.timingSafeEqual(bufProvided, bufExpected);
+}
+
+function verifyGatewayAuth(req, res, next) {
+    const expectedProxySecret = (process.env.RAPIDAPI_PROXY_SECRET || '').trim();
+    const expectedAdminSecret = (process.env.ADMIN_TEST_SECRET || '').trim();
+
+    const incomingProxySecret = (req.headers['x-rapidapi-proxy-secret'] || '').toString().trim();
+    const incomingAdminKey = (req.headers['x-admin-test-key'] || '').toString().trim();
+
+    const authHeader = (req.headers['authorization'] || '').toString().trim();
+    const bearerToken = authHeader.toLowerCase().startsWith('bearer ')
+        ? authHeader.slice(7).trim()
+        : '';
+
+    const isValidRapidApiRequest =
+        Boolean(expectedProxySecret) && safeCompareSecret(incomingProxySecret, expectedProxySecret);
+
+    const isValidAdminTestRequest =
+        Boolean(expectedAdminSecret) &&
+        (safeCompareSecret(incomingAdminKey, expectedAdminSecret) ||
+         safeCompareSecret(bearerToken, expectedAdminSecret));
+
+    if (!isValidRapidApiRequest && !isValidAdminTestRequest) {
+        return res.status(403).json({
+            success: false,
+            code: 403,
+            status: "error",
+            error: "Access denied. Direct requests to this server are not permitted."
+        });
+    }
+
+    req.authSource = isValidRapidApiRequest ? 'rapidapi' : 'admin_test';
+    return next();
+}
 
 // --------------------------------------------------------------------
 // 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST qəbul edir)
@@ -164,7 +208,7 @@ async function resolveShortUrl(targetUrl) {
 
 // 📰 Responsiv Məqalə Embed Kartı
 function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
-    const hasThumb = thumbnail && !thumbnail.includes('placeholder') && !thumbnail.includes('No+Thumbnail');
+    const hasThumb = thumbnail && !/nophoto|no-photo|no_photo|placeholder|No\+Thumbnail|thunk_600/i.test(thumbnail);
     return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
@@ -246,13 +290,13 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 '--disable-gpu',
                 '--single-process',
                 '--no-zygote',
-                '--disable-blink-features=AutomationControlled', // 👈 Bot deteksiyasını söndürür;
+                '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
                 '--window-size=1920,1080',
                 '--start-maximized',
                 '--hide-scrollbars',
                 '--disable-web-security',
-                '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7', // 👈 Dil uyğunluğu;
+                '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7',
                 '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
             ],
             defaultViewport: { width: 1280, height: 800 },
@@ -289,7 +333,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         // Qısa ilkin gözləmə (JS və DOM-un oturması üçün)
-        const quickDelay = Math.floor(Math.random() * 500) + 700; // 0.7 - 1.2 san;
+        const quickDelay = Math.floor(Math.random() * 500) + 700;
         await delay(quickDelay);
 
         // Cloudflare challenge düşübsə, yalnız o halda bir qədər də gözlə
@@ -476,7 +520,8 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     '.advertisement', '.social-share', '.tags', '.author-box',
                     '.read-more', '.other-news', '.news-box', 'figure',
                     '[class*="related"]', '[class*="share"]', '[class*="social"]',
-                    '[class*="banner"]', '[class*="advert"]', '.poll', '.polls', '.pagination'
+                    '[class*="banner"]', '[class*="advert"]', '[class*="trend"]',
+                    '.poll', '.polls', '.pagination'
                 ];
                 clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
 
@@ -532,6 +577,8 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 if (out.body.paragraphs.length === 0) {
                     const headlineSelectors = [
                         'a[href*="/xeber/"]',
+                        'a[href*="/news/detail/"]',
+                        'a[href*="/article/"]',
                         '.titleline > a',
                         'article h1 a',
                         'article h2 a',
@@ -572,7 +619,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             const isSystemJunkUrl = (urlStr) => {
                 const lower = (urlStr || '').toLowerCase();
                 return [
-                    'tracker', 'pixel', 'placeholder', 'no+thumbnail',
+                    'tracker', 'pixel', 'placeholder', 'no+thumbnail', 'thunk_600',
                     'nophoto', 'no-photo', 'no_photo', 'default-image', 'default_image',
                     'blank.gif', 'atrk.gif', 'facebook.com/tr',
                     'vote_b.gif', 'dloader.gif', 'loader.gif', 'spinner'
@@ -710,7 +757,7 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             const seenLinks = new Set();
             document.querySelectorAll('a').forEach(a => {
                 const href = a.getAttribute('href');
-                const text = a.innerText.trim();
+                const text = a.innerText.replace(/\s+/g, ' ').trim();
                 if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
                 try {
                     const abs = new URL(href, pageUrl).href;
@@ -893,9 +940,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
         const finalClassifiedImages = limits.img === null ? rawClassified : rawClassified.slice(0, limits.img);
         const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
 
-        // OG şəkli nophoto, placeholder və ya reklam banneridirsə, real məqalə şəklini (finalImages[0]) götürür
+        // OG şəkli nophoto, placeholder, thunk_600 və ya reklam banneridirsə, real məqalə şəklini (finalImages[0]) götürür
         const rawOgThumb = extracted.head.open_graph.image || extracted.head.twitter.image || '';
-        const isBadThumb = /nophoto|no-photo|no_photo|placeholder|no\+thumbnail|banner|\/ads\/|\/adv\//i.test(rawOgThumb);
+        const isBadThumb = /nophoto|no-photo|no_photo|placeholder|no\+thumbnail|thunk_600|banner|\/ads\/|\/adv\//i.test(rawOgThumb);
         const thumbnail = (!isBadThumb && rawOgThumb)
             ? rawOgThumb
             : (finalImages.length > 0 ? finalImages[0] : (rawOgThumb || null));
@@ -946,12 +993,13 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 json_ld: extracted.head.json_ld,
                 all_meta_tags: extracted.head.all_meta
             },
-           deep_data: {
+            deep_data: {
                 plan: plan,
                 error: null,
                 pageContent: fullText,
                 paragraphs: finalParagraphs,
                 images: finalImages,
+                classified_images: finalClassifiedImages,
                 links: finalLinks,
                 videoSources: extracted.body.videoSources,
                 has_video_sources: hasVideo
@@ -967,9 +1015,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
 }
 
 // --------------------------------------------------------------------
-// 🚀 ƏSAS API ENDPOINT (HƏM GET, HƏM DƏ POST DƏSTƏKLƏNİR)
+// 🚀 ƏSAS API ENDPOINT (YALNIZ RAPIDAPI PROXY VƏ YA ADMIN TEST İLƏ)
 // --------------------------------------------------------------------
-app.all(['/', '/scrape', '/extract'], async (req, res) => {
+app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
     const startTime = Date.now();
 
     let targetUrl = req.body?.url || req.query?.url;
@@ -1030,20 +1078,9 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
     }
     // ====================================================
 
-    // 💡 PLAN TƏYİNİ
-    const rapidApiSub = req.headers['x-rapidapi-subscription'] || req.headers['x-ratelimit-tier'];
-
-    let rawPlan =
-        rapidApiSub ||
-        req.body?.plan ||
-        req.body?.plan_type ||
-        req.body?.planType ||
-        req.query?.plan ||
-        req.query?.plan_type ||
-        req.query?.planType ||
-        "basic";
-
-    let plan = rawPlan.toString().toLowerCase().trim();
+    // 💡 PLAN TƏYİNİ: Yalnız RapidAPI abunəlik başlığından oxunur (müştəri body/query ilə dəyişə bilməz)
+    const rapidApiSub = req.headers['x-rapidapi-subscription'];
+    let plan = rapidApiSub ? rapidApiSub.toString().toLowerCase().trim() : "basic";
     if (!PLAN_ACCESS[plan]) {
         plan = "basic";
     }
@@ -1068,57 +1105,6 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
             response_time_ms: Date.now() - startTime
         });
     }
-});
-
-
-// --------------------------------------------------------------------
-// LOCAL BULK WORKBENCH (əlavə interfeys; mövcud API plan limitlərini dəyişmir)
-// --------------------------------------------------------------------
-app.use(express.static(require('path').join(__dirname, 'public')));
-
-app.post('/api/bulk', async (req, res) => {
-    const urls = Array.isArray(req.body?.urls) ? req.body.urls : [];
-    const planInput = String(req.body?.plan || 'basic').toLowerCase();
-    const plan = PLAN_ACCESS[planInput] ? planInput : 'basic';
-    if (!urls.length) return res.status(400).json({ error: 'URL siyahısı boşdur.' });
-    if (urls.length > 500) return res.status(400).json({ error: 'Bir sorğuda maksimum 500 URL qəbul edilir.' });
-    const results = [];
-    for (let i = 0; i < urls.length; i++) {
-        const raw = String(urls[i] || '').trim();
-        if (!raw) { results.push({ input_url: raw, success: false, error: 'Boş URL' }); continue; }
-        let url = raw;
-        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-        try {
-            const parsed = new URL(url);
-            if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol) || isPrivateOrBlockedIP(parsed.hostname)) throw new Error('URL təhlükəsizlik yoxlamasından keçmədi.');
-            const blocked = ['youtube.com','youtu.be','tiktok.com','instagram.com','facebook.com','twitter.com','x.com'];
-            if (blocked.some(d => parsed.hostname.toLowerCase().includes(d))) throw new Error('Bu sosial şəbəkə dəstəklənmir.');
-            url = await resolveShortUrl(url);
-            const result = await scrapeUniversalWeb(url, plan);
-            results.push({ input_url: raw, requested_url: url, ...result });
-        } catch (e) { results.push({ input_url: raw, success: false, status: 'error', error: e.message || 'Emal xətası' }); }
-    }
-    res.json({ plan_type: plan, total: urls.length, succeeded: results.filter(x => x.success).length, failed: results.filter(x => !x.success).length, results });
-});
-
-app.post('/api/export', async (req, res) => {
-    const format = String(req.body?.format || 'json').toLowerCase();
-    const rows = Array.isArray(req.body?.results) ? req.body.results : [];
-    if (!['json','csv','xlsx','zip'].includes(format)) return res.status(400).json({ error: 'Format dəstəklənmir.' });
-    try {
-        const ExcelJS = require('exceljs');
-        const archiver = require('archiver');
-        const fields = ['input_url','requested_url','success','code','status','plan_type','name','description','thumbnail_url','favicon_url','canonical_url','author','site_name','is_video','pageContent','paragraphs','images','links','videoSources','error'];
-        const flat = rows.map(r => ({ input_url:r.input_url||'', requested_url:r.requested_url||'', success:r.success??false, code:r.code??'', status:r.status||'', plan_type:r.plan_type||'', name:r.name||'', description:r.description||'', thumbnail_url:r.thumbnail_url||'', favicon_url:r.favicon_url||'', canonical_url:r.canonical_url||'', author:r.author||'', site_name:r.site_name||'', is_video:r.is_video??false, pageContent:r.deep_data?.pageContent||'', paragraphs:JSON.stringify(r.deep_data?.paragraphs||[]), images:JSON.stringify(r.deep_data?.images||[]), links:JSON.stringify(r.deep_data?.links||[]), videoSources:JSON.stringify(r.deep_data?.videoSources||[]), error:r.error||'' }));
-        const makeCsv = () => [fields.join(','), ...flat.map(row => fields.map(k => '"'+String(row[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
-        const makeXlsx = async () => { const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Scraped Data'); ws.columns=fields.map(k=>({header:k,key:k,width:24})); flat.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true}; return Buffer.from(await wb.xlsx.writeBuffer()); };
-        if (format === 'json') { res.setHeader('Content-Type','application/json; charset=utf-8'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.json"'); return res.send(JSON.stringify(rows,null,2)); }
-        if (format === 'csv') { res.setHeader('Content-Type','text/csv; charset=utf-8'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.csv"'); return res.send('\uFEFF'+makeCsv()); }
-        if (format === 'xlsx') { const b=await makeXlsx(); res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.xlsx"'); return res.send(b); }
-        res.setHeader('Content-Type','application/zip'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.zip"');
-        const zip=archiver('zip',{zlib:{level:9}}); zip.on('error',e=>{if(!res.headersSent)res.status(500).end(e.message);}); zip.pipe(res);
-        zip.append(JSON.stringify(rows,null,2),{name:'scraped-data.json'}); zip.append('\uFEFF'+makeCsv(),{name:'scraped-data.csv'}); zip.append(await makeXlsx(),{name:'scraped-data.xlsx'}); zip.finalize();
-    } catch(e) { if(!res.headersSent) res.status(500).json({error:'İxrac xətası: '+e.message}); }
 });
 
 // --------------------------------------------------------------------
