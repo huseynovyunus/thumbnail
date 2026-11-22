@@ -20,11 +20,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 🛡️ Sığorta Middleware: Content-Type yazılmasa belə yalnız body-si olan sorğuları oxuyur
+// 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
 app.use((req, res, next) => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     if (req.body && Object.keys(req.body).length > 0) return next();
-    if (!req.readable || req.readableEnded) return next();
 
     let data = '';
     let finished = false;
@@ -49,13 +48,13 @@ app.use((req, res, next) => {
     setTimeout(() => {
         if (!finished) {
             finished = true;
-            if (data) {
+            if (data && !req.body) {
                 try {
                     req.body = JSON.parse(data);
                 } catch (e) {
                     req.body = { url: data.trim() };
                 }
-            } else {
+            } else if (!req.body) {
                 req.body = {};
             }
             next();
@@ -80,6 +79,7 @@ function safeCompareSecret(provided, expected) {
 function verifyGatewayAuth(req, res, next) {
     const expectedProxySecret = (process.env.RAPIDAPI_PROXY_SECRET || '').trim();
     const expectedAdminSecret = (process.env.ADMIN_TEST_SECRET || '').trim();
+    const enforceAuth = String(process.env.ENFORCE_GATEWAY_AUTH || '').toLowerCase().trim() === 'true';
 
     const incomingProxySecret = (req.headers['x-rapidapi-proxy-secret'] || '').toString().trim();
     const incomingAdminKey = (req.headers['x-admin-test-key'] || '').toString().trim();
@@ -97,7 +97,18 @@ function verifyGatewayAuth(req, res, next) {
         (safeCompareSecret(incomingAdminKey, expectedAdminSecret) ||
          safeCompareSecret(bearerToken, expectedAdminSecret));
 
-    if (!isValidRapidApiRequest && !isValidAdminTestRequest) {
+    if (isValidRapidApiRequest) {
+        req.authSource = 'rapidapi';
+        return next();
+    }
+
+    if (isValidAdminTestRequest) {
+        req.authSource = 'admin_test';
+        return next();
+    }
+
+    // Yalnız ENFORCE_GATEWAY_AUTH=true təyin edildikdə birbaşa sorğuları 403 ilə blokla
+    if (enforceAuth) {
         return res.status(403).json({
             success: false,
             code: 403,
@@ -106,7 +117,7 @@ function verifyGatewayAuth(req, res, next) {
         });
     }
 
-    req.authSource = isValidRapidApiRequest ? 'rapidapi' : 'admin_test';
+    req.authSource = 'direct';
     return next();
 }
 
@@ -123,7 +134,7 @@ app.all(['/health', '/healrh'], (req, res) => {
 });
 
 // --------------------------------------------------------------------
-// 🔑 TƏHLÜKƏSİZLİK, RAM NÖVBƏSİ VƏ PLAN TƏNZİMLƏMƏLƏRİ
+// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ (RAPIDAPI ADLARINA UYĞUNLAŞDIRILDI)
 // --------------------------------------------------------------------
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0'];
@@ -147,30 +158,6 @@ const PLAN_CONTENT_LIMITS = {
 
 const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
 
-// 🛡️ Render 512MB RAM üçün brauzer növbəsi (eyni anda maksimum 1 Chromium)
-const MAX_CONCURRENT_BROWSERS = 1;
-let activeBrowsers = 0;
-const browserQueue = [];
-
-function acquireBrowserSlot() {
-    if (activeBrowsers < MAX_CONCURRENT_BROWSERS) {
-        activeBrowsers++;
-        return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-        browserQueue.push(resolve);
-    });
-}
-
-function releaseBrowserSlot() {
-    if (browserQueue.length > 0) {
-        const nextResolve = browserQueue.shift();
-        nextResolve();
-    } else {
-        activeBrowsers = Math.max(0, activeBrowsers - 1);
-    }
-}
-
 function ipToLong(ip) {
     const parts = ip.split('.');
     if (parts.length !== 4) return 0;
@@ -185,29 +172,19 @@ function isPrivateOrBlockedIP(input) {
         }
         if (!hostname) return true;
 
-        const lower = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+        const lower = hostname.toLowerCase();
         if (BLOCKED_HOSTS_EXACT.includes(lower)) return true;
 
-        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(lower);
+        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
         if (isIp) {
-            const ipLong = ipToLong(lower);
+            const ipLong = ipToLong(hostname);
             for (const range of PRIVATE_IP_RANGES) {
                 if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) return true;
             }
             return false;
         }
 
-        if (
-            lower === '::1' ||
-            lower === '::' ||
-            lower.startsWith('::ffff:127.') ||
-            lower.startsWith('fe80:') ||
-            lower.startsWith('fc') ||
-            lower.startsWith('fd')
-        ) {
-            return true;
-        }
-
+        if (lower === '[::1]' || lower === '::1') return true;
         return false;
     } catch {
         return true;
@@ -242,23 +219,10 @@ async function resolveShortUrl(targetUrl) {
     return targetUrl;
 }
 
-function escapeHtmlAttr(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-// 📰 Responsiv Məqalə Embed Kartı (HTML/XSS qorumalı)
+// 📰 Responsiv Məqalə Embed Kartı
 function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
-    const safeUrl = escapeHtmlAttr(url);
-    const safeThumb = escapeHtmlAttr(thumbnail);
-    const safeTitle = escapeHtmlAttr(title);
-    const safeDesc = escapeHtmlAttr(description);
-    const safeSite = escapeHtmlAttr(siteName || 'Veb Məqalə');
     const hasThumb = thumbnail && !/nophoto|no-photo|no_photo|placeholder|No\+Thumbnail|thunk_600/i.test(thumbnail);
-    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${safeThumb}" alt="${safeTitle}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${safeSite}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${safeTitle}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeDesc}</p></div></a></div>`;
+    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
 }
 
 function normalizeEmbedUrl(rawUrl) {
@@ -279,6 +243,14 @@ function normalizeEmbedUrl(rawUrl) {
     } catch {
         return clean;
     }
+}
+
+function escapeHtmlAttr(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function buildVideoEmbeds(videoSources = [], limit = 10) {
@@ -320,7 +292,6 @@ function buildVideoEmbeds(videoSources = [], limit = 10) {
 // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
 async function scrapeUniversalWeb(targetUrl, plan = "basic") {
-    await acquireBrowserSlot();
     let browser = null;
     try {
         browser = await puppeteer.launch({
@@ -354,13 +325,13 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
         });
 
-        // 🛡️ Render 512MB RAM mühafizəsi
+        // 🛡️ Render 512MB RAM mühafizəsi (CSS saxlanılır ki, saytlar 403 bot bloku verməsin)
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const resource = req.resourceType();
             const reqUrl = req.url().toLowerCase();
             const isAdUrl = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'].some(k => reqUrl.includes(k));
-            if (isAdUrl || ['image', 'media', 'font', 'stylesheet'].includes(resource)) {
+            if (isAdUrl || ['image', 'media', 'font'].includes(resource)) {
                 req.abort();
             } else {
                 req.continue();
@@ -434,20 +405,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 }
             };
 
-            const flattenJsonLdItems = (rawParsed) => {
-                const items = [];
-                const stack = Array.isArray(rawParsed) ? [...rawParsed] : [rawParsed];
-                while (stack.length > 0) {
-                    const current = stack.shift();
-                    if (!current || typeof current !== 'object') continue;
-                    items.push(current);
-                    if (Array.isArray(current['@graph'])) {
-                        stack.push(...current['@graph']);
-                    }
-                }
-                return items;
-            };
-
             const titleEl = document.querySelector('title');
             if (titleEl && titleEl.innerText) {
                 out.head.title = titleEl.innerText.trim();
@@ -489,13 +446,10 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             });
 
             const canonicalEl = document.querySelector('link[rel="canonical"]');
-            const rawCanonical = canonicalEl?.getAttribute('href') || out.head.open_graph.url || '';
-            if (rawCanonical) {
-                try {
-                    out.head.canonical = new URL(rawCanonical, pageUrl).href;
-                } catch {
-                    out.head.canonical = rawCanonical;
-                }
+            if (canonicalEl && canonicalEl.getAttribute('href')) {
+                out.head.canonical = canonicalEl.getAttribute('href');
+            } else if (out.head.open_graph.url) {
+                out.head.canonical = out.head.open_graph.url;
             }
 
             const iconEl = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
@@ -518,10 +472,8 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     if (raw) {
                         const parsed = JSON.parse(raw);
                         out.head.json_ld.push(parsed);
-                        for (const node of flattenJsonLdItems(parsed)) {
-                            if (!out.head.title && node.headline) out.head.title = node.headline;
-                            if (!out.head.description && node.description) out.head.description = node.description;
-                        }
+                        if (!out.head.title && parsed.headline) out.head.title = parsed.headline;
+                        if (!out.head.description && parsed.description) out.head.description = parsed.description;
                     }
                 } catch {}
             });
@@ -805,15 +757,12 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 if (src) registerImage(src, imgEl, isDedicatedArticleContainer ? 'page_other' : 'dom');
             });
 
-            // 4. JSON-LD NewsArticle / Article şəkilləri (@graph daxil)
+            // 4. JSON-LD NewsArticle şəkilləri
             if (Array.isArray(out.head.json_ld)) {
                 for (const ld of out.head.json_ld) {
-                    for (const node of flattenJsonLdItems(ld)) {
-                        const nodeType = Array.isArray(node?.['@type']) ? node['@type'] : [node?.['@type']];
-                        if ((nodeType.includes('NewsArticle') || nodeType.includes('Article')) && node.image) {
-                            const imgs = Array.isArray(node.image) ? node.image : [node.image];
-                            imgs.forEach(u => registerImage(typeof u === 'string' ? u : u?.url, null, 'json_ld'));
-                        }
+                    if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
+                        const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
+                        imgs.forEach(u => registerImage(typeof u === 'string' ? u : u?.url, null, 'json_ld'));
                     }
                 }
             }
@@ -914,13 +863,10 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 out.head.twitter.player;
             pushUniqueVideo(ogVideo);
 
-            // 2. JSON-LD (VideoObject) daxilindən video yoxla (@graph daxil)
+            // 2. JSON-LD (VideoObject) daxilindən video yoxla
             out.head.json_ld.forEach(item => {
-                for (const node of flattenJsonLdItems(item)) {
-                    const nodeType = Array.isArray(node?.['@type']) ? node['@type'] : [node?.['@type']];
-                    if (nodeType.includes('VideoObject')) {
-                        pushUniqueVideo(node.embedUrl || node.contentUrl);
-                    }
+                if (item && item['@type'] === 'VideoObject') {
+                    pushUniqueVideo(item.embedUrl || item.contentUrl);
                 }
             });
 
@@ -1078,13 +1024,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             try { await browser.close(); } catch {}
         }
         throw err;
-    } finally {
-        releaseBrowserSlot();
     }
 }
 
 // --------------------------------------------------------------------
-// 🚀 ƏSAS API ENDPOINT (YALNIZ RAPIDAPI PROXY VƏ YA ADMIN TEST İLƏ)
+// 🚀 ƏSAS API ENDPOINT
 // --------------------------------------------------------------------
 app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
     const startTime = Date.now();
@@ -1124,7 +1068,7 @@ app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
     }
 
     // ====================================================
-    // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI (Dəqiq domen uyğunluğu)
+    // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
     // ====================================================
     const BLOCKED_SOCIAL_DOMAINS = [
         'youtube.com', 'youtu.be',
@@ -1149,7 +1093,7 @@ app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
     }
     // ====================================================
 
-    // 💡 PLAN TƏYİNİ: Yalnız RapidAPI abunəlik başlığından oxunur (müştəri body/query ilə dəyişə bilməz)
+    // 💡 PLAN TƏYİNİ
     const rapidApiSub = req.headers['x-rapidapi-subscription'];
     let plan = rapidApiSub ? rapidApiSub.toString().toLowerCase().trim() : "basic";
     if (!PLAN_ACCESS[plan]) {
@@ -1184,7 +1128,4 @@ app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
-    if (!process.env.RAPIDAPI_PROXY_SECRET && !process.env.ADMIN_TEST_SECRET) {
-        console.warn("⚠️ XƏBƏRDARLIQ: RAPIDAPI_PROXY_SECRET və ADMIN_TEST_SECRET təyin edilməyib. Bütün sorğular 403 alacaq!");
-    }
 });
