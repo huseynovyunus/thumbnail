@@ -36,8 +36,8 @@ app.set('trust proxy', 1);
 // --------------------------------------------------------------------
 // ⚙️ SERVER VƏ TEXNİKİ TƏHLÜKƏSİZLİK KONFİQURASİYASI
 // --------------------------------------------------------------------
-const PORT = parseInt(process.env.PORT, 10) || 3000;
-const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase().trim() === 'production';
+// Yeni (Render-də ENFORCE_GATEWAY_AUTH=true yazılana qədər birbaşa giriş açıq qalır):
+const ENFORCE_GATEWAY_AUTH = String(process.env.ENFORCE_GATEWAY_AUTH || '').toLowerCase().trim() === 'true';
 
 // İstehsal mühitində (və ya ENFORCE_GATEWAY_AUTH=true olduqda) birbaşa sorğular bloklanır
 const ENFORCE_GATEWAY_AUTH = process.env.ENFORCE_GATEWAY_AUTH !== undefined
