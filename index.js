@@ -15,6 +15,10 @@ const chromium = require('@sparticuz/chromium');
 
 const app = express();
 
+app.get("/", (req, res) => {
+    res.sendFile(require("path").join(__dirname, "public", "index.html"));
+});
+
 app.use(cors()); // 👈 2. Bütün origin-lərə icazə vermək üçün aktivləşdir;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -1064,6 +1068,57 @@ app.all(['/', '/scrape', '/extract'], async (req, res) => {
             response_time_ms: Date.now() - startTime
         });
     }
+});
+
+
+// --------------------------------------------------------------------
+// LOCAL BULK WORKBENCH (əlavə interfeys; mövcud API plan limitlərini dəyişmir)
+// --------------------------------------------------------------------
+app.use(express.static(require('path').join(__dirname, 'public')));
+
+app.post('/api/bulk', async (req, res) => {
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+    const planInput = String(req.body?.plan || 'basic').toLowerCase();
+    const plan = PLAN_ACCESS[planInput] ? planInput : 'basic';
+    if (!urls.length) return res.status(400).json({ error: 'URL siyahısı boşdur.' });
+    if (urls.length > 500) return res.status(400).json({ error: 'Bir sorğuda maksimum 500 URL qəbul edilir.' });
+    const results = [];
+    for (let i = 0; i < urls.length; i++) {
+        const raw = String(urls[i] || '').trim();
+        if (!raw) { results.push({ input_url: raw, success: false, error: 'Boş URL' }); continue; }
+        let url = raw;
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        try {
+            const parsed = new URL(url);
+            if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol) || isPrivateOrBlockedIP(parsed.hostname)) throw new Error('URL təhlükəsizlik yoxlamasından keçmədi.');
+            const blocked = ['youtube.com','youtu.be','tiktok.com','instagram.com','facebook.com','twitter.com','x.com'];
+            if (blocked.some(d => parsed.hostname.toLowerCase().includes(d))) throw new Error('Bu sosial şəbəkə dəstəklənmir.');
+            url = await resolveShortUrl(url);
+            const result = await scrapeUniversalWeb(url, plan);
+            results.push({ input_url: raw, requested_url: url, ...result });
+        } catch (e) { results.push({ input_url: raw, success: false, status: 'error', error: e.message || 'Emal xətası' }); }
+    }
+    res.json({ plan_type: plan, total: urls.length, succeeded: results.filter(x => x.success).length, failed: results.filter(x => !x.success).length, results });
+});
+
+app.post('/api/export', async (req, res) => {
+    const format = String(req.body?.format || 'json').toLowerCase();
+    const rows = Array.isArray(req.body?.results) ? req.body.results : [];
+    if (!['json','csv','xlsx','zip'].includes(format)) return res.status(400).json({ error: 'Format dəstəklənmir.' });
+    try {
+        const ExcelJS = require('exceljs');
+        const archiver = require('archiver');
+        const fields = ['input_url','requested_url','success','code','status','plan_type','name','description','thumbnail_url','favicon_url','canonical_url','author','site_name','is_video','pageContent','paragraphs','images','links','videoSources','error'];
+        const flat = rows.map(r => ({ input_url:r.input_url||'', requested_url:r.requested_url||'', success:r.success??false, code:r.code??'', status:r.status||'', plan_type:r.plan_type||'', name:r.name||'', description:r.description||'', thumbnail_url:r.thumbnail_url||'', favicon_url:r.favicon_url||'', canonical_url:r.canonical_url||'', author:r.author||'', site_name:r.site_name||'', is_video:r.is_video??false, pageContent:r.deep_data?.pageContent||'', paragraphs:JSON.stringify(r.deep_data?.paragraphs||[]), images:JSON.stringify(r.deep_data?.images||[]), links:JSON.stringify(r.deep_data?.links||[]), videoSources:JSON.stringify(r.deep_data?.videoSources||[]), error:r.error||'' }));
+        const makeCsv = () => [fields.join(','), ...flat.map(row => fields.map(k => '"'+String(row[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
+        const makeXlsx = async () => { const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Scraped Data'); ws.columns=fields.map(k=>({header:k,key:k,width:24})); flat.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true}; return Buffer.from(await wb.xlsx.writeBuffer()); };
+        if (format === 'json') { res.setHeader('Content-Type','application/json; charset=utf-8'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.json"'); return res.send(JSON.stringify(rows,null,2)); }
+        if (format === 'csv') { res.setHeader('Content-Type','text/csv; charset=utf-8'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.csv"'); return res.send('\uFEFF'+makeCsv()); }
+        if (format === 'xlsx') { const b=await makeXlsx(); res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.xlsx"'); return res.send(b); }
+        res.setHeader('Content-Type','application/zip'); res.setHeader('Content-Disposition','attachment; filename="scraped-data.zip"');
+        const zip=archiver('zip',{zlib:{level:9}}); zip.on('error',e=>{if(!res.headersSent)res.status(500).end(e.message);}); zip.pipe(res);
+        zip.append(JSON.stringify(rows,null,2),{name:'scraped-data.json'}); zip.append('\uFEFF'+makeCsv(),{name:'scraped-data.csv'}); zip.append(await makeXlsx(),{name:'scraped-data.xlsx'}); zip.finalize();
+    } catch(e) { if(!res.headersSent) res.status(500).json({error:'İxrac xətası: '+e.message}); }
 });
 
 // --------------------------------------------------------------------
