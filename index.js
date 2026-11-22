@@ -1,11 +1,16 @@
 // ====================================================================
 // 🌐 PURE UNIVERSAL WEB & ARTICLE SCRAPER API (RENDER & RAPIDAPI)
-// 🎯 DƏRİN <HEAD>, META VƏ JSON-LD ÇIXARIŞI İLƏ TAM TƏMİZLƏNMİŞ VERSİYA
+// 🛡️ PRODUCTION SECURITY, SSRF PROTECTION, RAM QUEUE & CLEAN EXTRACTION
 // ====================================================================
 
 require('dotenv').config();
 
 const crypto = require('crypto');
+const dns = require('dns').promises;
+const dnsSync = require('dns');
+const http = require('http');
+const https = require('https');
+const net = require('net');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -14,56 +19,391 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 const chromium = require('@sparticuz/chromium');
 
+// Opsional təhlükəsizlik paketləri (quraşdırılıbsa istifadə olunur, əks halda daxili fallback işləyir)
+let ipaddr = null;
+try { ipaddr = require('ipaddr.js'); } catch {}
+
+let helmet = null;
+try { helmet = require('helmet'); } catch {}
+
+let rateLimit = null;
+try { rateLimit = require('express-rate-limit'); } catch {}
+
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// --------------------------------------------------------------------
+// ⚙️ SERVER VƏ TEXNİKİ TƏHLÜKƏSİZLİK KONFİQURASİYASI
+// --------------------------------------------------------------------
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase().trim() === 'production';
 
-// 🛡️ Sığorta Middleware: Content-Type yazılmasa belə body-ni təhlükəsiz oxuyur
-app.use((req, res, next) => {
-    if (req.method === 'GET' || req.method === 'HEAD') return next();
-    if (req.body && Object.keys(req.body).length > 0) return next();
+// İstehsal mühitində (və ya ENFORCE_GATEWAY_AUTH=true olduqda) birbaşa sorğular bloklanır
+const ENFORCE_GATEWAY_AUTH = process.env.ENFORCE_GATEWAY_AUTH !== undefined
+    ? String(process.env.ENFORCE_GATEWAY_AUTH).toLowerCase().trim() === 'true'
+    : IS_PRODUCTION;
 
-    let data = '';
-    let finished = false;
+// TLS sertifikat yoxlaması default olaraq aktivdir (false = təhlükəsiz)
+const ALLOW_INSECURE_TLS = String(process.env.ALLOW_INSECURE_TLS || '').toLowerCase().trim() === 'true';
 
-    req.on('data', chunk => { data += chunk; });
-    req.on('end', () => {
-        if (finished) return;
-        finished = true;
-        if (data) {
-            try {
-                req.body = JSON.parse(data);
-            } catch (e) {
-                req.body = { url: data.trim() };
-            }
+// CSS bloklanması konfiqurasiyası (default true = RAM və sürət qənaəti)
+const BLOCK_STYLESHEETS = process.env.BLOCK_STYLESHEETS !== undefined
+    ? String(process.env.BLOCK_STYLESHEETS).toLowerCase().trim() === 'true'
+    : true;
+
+// Render 512MB RAM üçün brauzer paralellik, növbə və vaxt limitləri
+const MAX_CONCURRENT_BROWSERS = Math.max(1, parseInt(process.env.MAX_CONCURRENT_BROWSERS, 10) || 1);
+const MAX_BROWSER_QUEUE_SIZE = Math.max(1, parseInt(process.env.MAX_BROWSER_QUEUE_SIZE, 10) || 10);
+const QUEUE_WAIT_TIMEOUT_MS = Math.max(3000, parseInt(process.env.QUEUE_WAIT_TIMEOUT_MS, 10) || 12000);
+const SCRAPE_TIMEOUT_MS = Math.max(8000, parseInt(process.env.SCRAPE_TIMEOUT_MS, 10) || 20000);
+const DNS_TIMEOUT_MS = Math.max(1000, parseInt(process.env.DNS_TIMEOUT_MS, 10) || 3000);
+const MAX_URL_LENGTH = 2048;
+
+// JSON-LD, Meta və Rate Limit konfiqurasiyaları
+const MAX_JSONLD_SCRIPTS = Math.max(1, parseInt(process.env.MAX_JSONLD_SCRIPTS, 10) || 15);
+const MAX_JSONLD_SCRIPT_BYTES = Math.max(2048, parseInt(process.env.MAX_JSONLD_SCRIPT_BYTES, 10) || 65536);
+const MAX_META_TAGS = Math.max(10, parseInt(process.env.MAX_META_TAGS, 10) || 120);
+const MAX_META_BYTES = Math.max(4096, parseInt(process.env.MAX_META_BYTES, 10) || 32768);
+const MAX_REQUESTS_PER_MINUTE = Math.max(10, parseInt(process.env.MAX_REQUESTS_PER_MINUTE, 10) || 60);
+const EGRESS_PROXY_URL = (process.env.EGRESS_PROXY_URL || '').trim();
+const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || '').trim();
+
+// 🛡️ Texniki RAM və Cavab Mühafizə Hədləri (Ultra/Mega plan imkanlarını məhdudlaşdırmadan serveri qoruyur)
+const TECHNICAL_SAFETY_CAPS = {
+    maxTextChars: 250000,
+    maxParagraphs: 500,
+    maxImages: 200,
+    maxLinks: 300,
+    maxVideos: 50,
+    maxJsonLdScripts: MAX_JSONLD_SCRIPTS,
+    maxJsonLdScriptBytes: MAX_JSONLD_SCRIPT_BYTES,
+    maxJsonLdDepth: 12,
+    maxJsonLdNodes: 250,
+    maxJsonLdBytes: 120000,
+    maxMetaTags: MAX_META_TAGS,
+    maxMetaBytes: MAX_META_BYTES,
+    maxResponseBytes: 1500000
+};
+
+// 💰 RAPIDAPI PLAN LİMİTLƏRİ (DƏYİŞDİRİLMƏYİB)
+const PLAN_CONTENT_LIMITS = {
+    contentLimit:   { basic: 1000, pro: 5000, ultra: null, mega: null },
+    paragraphLimit: { basic: 10,   pro: 30,   ultra: null, mega: null },
+    imageLimit:     { basic: 10,   pro: 30,   ultra: null, mega: null },
+    linkLimit:      { basic: 10,   pro: 30,   ultra: null, mega: null }
+};
+
+const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+
+// --------------------------------------------------------------------
+// 🛡️ DOMEN, IP VƏ EMBED HOST SİYAHILARI
+// --------------------------------------------------------------------
+const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
+
+const BLOCKED_HOSTNAMES_EXACT = new Set([
+    'localhost',
+    'localhost.localdomain',
+    '0.0.0.0',
+    'ip6-localhost',
+    'ip6-loopback',
+    'metadata',
+    'metadata.google.internal',
+    'metadata.goog',
+    'instance-data',
+    '169.254.169.254',
+    '100.100.100.200'
+]);
+
+const BLOCKED_HOSTNAME_SUFFIXES = [
+    '.localhost',
+    '.local',
+    '.internal',
+    '.intranet',
+    '.corp',
+    '.home',
+    '.lan'
+];
+
+const PRIVATE_IPV4_RANGES = [
+    { start: '0.0.0.0',       end: '0.255.255.255',     label: 'unspecified' },
+    { start: '10.0.0.0',      end: '10.255.255.255',    label: 'private_a' },
+    { start: '100.64.0.0',    end: '100.127.255.255',   label: 'cgnat_metadata' },
+    { start: '127.0.0.0',     end: '127.255.255.255',   label: 'loopback' },
+    { start: '169.254.0.0',   end: '169.254.255.255',   label: 'link_local_metadata' },
+    { start: '172.16.0.0',    end: '172.31.255.255',    label: 'private_b' },
+    { start: '192.0.0.0',     end: '192.0.0.255',       label: 'ietf_protocol' },
+    { start: '192.0.2.0',     end: '192.0.2.255',       label: 'test_net_1' },
+    { start: '192.88.99.0',   end: '192.88.99.255',     label: '6to4_relay' },
+    { start: '192.168.0.0',   end: '192.168.255.255',   label: 'private_c' },
+    { start: '198.18.0.0',    end: '198.19.255.255',    label: 'benchmark' },
+    { start: '198.51.100.0',  end: '198.51.100.255',    label: 'test_net_2' },
+    { start: '203.0.113.0',   end: '203.0.113.255',     label: 'test_net_3' },
+    { start: '224.0.0.0',     end: '239.255.255.255',   label: 'multicast' },
+    { start: '240.0.0.0',     end: '255.255.255.255',   label: 'reserved_broadcast' }
+];
+
+const SHORT_URL_HOSTS = new Set([
+    'pin.it', 'bit.ly', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly', 'rb.gy', 'cutt.ly'
+]);
+
+const BLOCKED_SOCIAL_DOMAINS = [
+    'youtube.com', 'youtu.be',
+    'tiktok.com',
+    'instagram.com',
+    'facebook.com',
+    'twitter.com', 'x.com'
+];
+
+const EXTRA_EMBED_HOSTS = (process.env.ALLOWED_EMBED_HOSTS || '')
+    .split(',')
+    .map(h => h.trim().toLowerCase())
+    .filter(h => h && /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h));
+
+const ALLOWED_EMBED_HOSTS = new Set([
+    'youtube.com',
+    'www.youtube.com',
+    'youtube-nocookie.com',
+    'www.youtube-nocookie.com',
+    'vimeo.com',
+    'player.vimeo.com',
+    'dailymotion.com',
+    'www.dailymotion.com',
+    'geo.dailymotion.com',
+    'rutube.ru',
+    'vk.com',
+    'ok.ru',
+    'baku.tv',
+    'player.baku.tv',
+    'streamable.com',
+    'embed.ted.com',
+    'twitch.tv',
+    'player.twitch.tv',
+    'loom.com',
+    'www.loom.com',
+    'fast.wistia.net',
+    'players.brightcove.net',
+    'content.jwplatform.com',
+    'iframe.mediadelivery.net',
+    ...EXTRA_EMBED_HOSTS
+]);
+
+// --------------------------------------------------------------------
+// 📊 MONITORING, SAĞLAMLIQ, READINESS VƏ LOGGING
+// --------------------------------------------------------------------
+let activeBrowsers = 0;
+let isShuttingDown = false;
+const browserQueue = [];
+const activeBrowserRegistry = new Map();
+
+function getBrowserStats() {
+    return {
+        active_browsers: activeBrowsers,
+        registered_processes: activeBrowserRegistry.size,
+        max_concurrent_browsers: MAX_CONCURRENT_BROWSERS,
+        queued_requests: browserQueue.length,
+        max_queue_size: MAX_BROWSER_QUEUE_SIZE,
+        shutting_down: isShuttingDown
+    };
+}
+
+function getPublicHealth() {
+    return {
+        status: isShuttingDown ? 'draining' : 'ok',
+        message: isShuttingDown
+            ? 'Server yenidən başladılır.'
+            : 'Server aktivdir və problemsiz işləyir.',
+        timestamp: new Date().toISOString()
+    };
+}
+
+function getAdminHealth() {
+    const mem = process.memoryUsage();
+    const stats = getBrowserStats();
+    return {
+        status: isShuttingDown ? 'draining' : 'ok',
+        message: 'Admin diaqnostika məlumatları.',
+        uptime_seconds: Math.floor(process.uptime()),
+        memory_rss_mb: Math.round(mem.rss / 1024 / 1024),
+        memory_heap_used_mb: Math.round(mem.heapUsed / 1024 / 1024),
+        active_browsers: stats.active_browsers,
+        registered_processes: stats.registered_processes,
+        queued_requests: stats.queued_requests,
+        max_concurrent_browsers: stats.max_concurrent_browsers,
+        max_queue_size: stats.max_queue_size,
+        egress_proxy_enabled: Boolean(EGRESS_PROXY_URL),
+        timestamp: new Date().toISOString()
+    };
+}
+
+function getServerHealth() {
+    return getPublicHealth();
+}
+
+function checkReadiness() {
+    const stats = getBrowserStats();
+    const ready = !isShuttingDown && stats.queued_requests < stats.max_queue_size;
+    return {
+        ready,
+        status: ready ? 'ready' : 'not_ready',
+        timestamp: new Date().toISOString()
+    };
+}
+
+function logScrapeEvent(level, event, details = {}) {
+    const sanitized = {};
+    const sensitivePattern = /(secret|token|password|authorization|key|cookie|proxy)/i;
+
+    for (const [k, v] of Object.entries(details || {})) {
+        if (sensitivePattern.test(k)) {
+            sanitized[k] = '[REDACTED]';
+        } else if (typeof v === 'string' && v.length > 300) {
+            sanitized[k] = v.slice(0, 300) + '...';
         } else {
-            req.body = {};
+            sanitized[k] = v;
         }
-        next();
+    }
+
+    const payload = JSON.stringify({
+        ts: new Date().toISOString(),
+        level,
+        event,
+        ...sanitized
     });
 
-    // ⚡ 2 saniyə ərzində 'end' gəlməzsə, asılı qalmanın qarşısını al
-    setTimeout(() => {
-        if (!finished) {
-            finished = true;
-            if (data && !req.body) {
-                try {
-                    req.body = JSON.parse(data);
-                } catch (e) {
-                    req.body = { url: data.trim() };
-                }
-            } else if (!req.body) {
-                req.body = {};
-            }
-            next();
+    if (level === 'error') {
+        console.error(payload);
+    } else if (level === 'warn') {
+        console.warn(payload);
+    } else {
+        console.log(payload);
+    }
+}
+
+// --------------------------------------------------------------------
+// 🛡️ EXPRESS SECURITY HEADERS, CORS, RATE LIMIT VƏ BODY PARSER
+// --------------------------------------------------------------------
+function configureSecurityHeaders() {
+    if (helmet) {
+        return helmet({
+            contentSecurityPolicy: false,
+            crossOriginEmbedderPolicy: false,
+            crossOriginResourcePolicy: { policy: 'cross-origin' }
+        });
+    }
+    return (req, res, next) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        if (IS_PRODUCTION) {
+            res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
         }
-    }, 2000);
+        return next();
+    };
+}
+
+function configureCors() {
+    if (!CORS_ALLOWED_ORIGINS || CORS_ALLOWED_ORIGINS === '*') {
+        return cors();
+    }
+    const allowedList = CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean);
+    return cors({
+        origin: (origin, callback) => {
+            if (!origin || allowedList.includes(origin)) {
+                return callback(null, true);
+            }
+            return callback(new Error('CORS_BLOCKED'));
+        }
+    });
+}
+
+function createRateLimitMiddleware() {
+    const keyGenerator = (req) => {
+        const rapidUser = (req.headers['x-rapidapi-user'] || '').toString().trim();
+        if (req.authSource === 'rapidapi' && rapidUser) {
+            return `rapid:${rapidUser}`;
+        }
+        return `ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+    };
+
+    if (rateLimit) {
+        return rateLimit({
+            windowMs: 60 * 1000,
+            max: MAX_REQUESTS_PER_MINUTE,
+            standardHeaders: true,
+            legacyHeaders: false,
+            keyGenerator,
+            handler: (req, res) => {
+                return res.status(429).json(
+                    createApiErrorResponse(429, 'Sorğu limiti aşıldı. Zəhmət olmasa bir az sonra yenidən cəhd edin.')
+                );
+            }
+        });
+    }
+
+    const buckets = new Map();
+    return (req, res, next) => {
+        const now = Date.now();
+        const key = keyGenerator(req);
+        let entry = buckets.get(key);
+        if (!entry || now - entry.windowStart >= 60000) {
+            entry = { windowStart: now, count: 0 };
+            buckets.set(key, entry);
+        }
+        entry.count++;
+        if (buckets.size > 5000) {
+            for (const [k, v] of buckets.entries()) {
+                if (now - v.windowStart >= 60000) buckets.delete(k);
+            }
+        }
+        if (entry.count > MAX_REQUESTS_PER_MINUTE) {
+            return res.status(429).json(
+                createApiErrorResponse(429, 'Sorğu limiti aşıldı. Zəhmət olmasa bir az sonra yenidən cəhd edin.')
+            );
+        }
+        return next();
+    };
+}
+
+app.use(configureSecurityHeaders());
+app.use(configureCors());
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+app.use(express.text({ type: ['text/plain', 'text/*'], limit: '100kb' }));
+
+app.use((req, res, next) => {
+    if (typeof req.body === 'string') {
+        const trimmed = req.body.trim();
+        if (!trimmed) {
+            req.body = {};
+        } else {
+            try {
+                const parsed = JSON.parse(trimmed);
+                req.body = (parsed && typeof parsed === 'object') ? parsed : { url: trimmed };
+            } catch {
+                req.body = { url: trimmed };
+            }
+        }
+    } else if (!req.body || typeof req.body !== 'object') {
+        req.body = {};
+    }
+    return next();
+});
+
+app.use((err, req, res, next) => {
+    if (err && err.message === 'CORS_BLOCKED') {
+        return res.status(403).json(createApiErrorResponse(403, 'Origin is not allowed by CORS policy.'));
+    }
+    if (err && err.type === 'entity.parse.failed') {
+        return res.status(400).json(createApiErrorResponse(400, 'Invalid JSON request body.'));
+    }
+    return next(err);
 });
 
 // --------------------------------------------------------------------
-// 🔐 RAPIDAPI PROXY SECRET & ADMIN TEST AUTENTİFİKASİYASI
+// 🔐 GATEWAY & ADMIN AUTENTİFİKASİYASI
 // --------------------------------------------------------------------
 function safeCompareSecret(provided, expected) {
     if (typeof provided !== 'string' || typeof expected !== 'string') return false;
@@ -79,7 +419,6 @@ function safeCompareSecret(provided, expected) {
 function verifyGatewayAuth(req, res, next) {
     const expectedProxySecret = (process.env.RAPIDAPI_PROXY_SECRET || '').trim();
     const expectedAdminSecret = (process.env.ADMIN_TEST_SECRET || '').trim();
-    const enforceAuth = String(process.env.ENFORCE_GATEWAY_AUTH || '').toLowerCase().trim() === 'true';
 
     const incomingProxySecret = (req.headers['x-rapidapi-proxy-secret'] || '').toString().trim();
     const incomingAdminKey = (req.headers['x-admin-test-key'] || '').toString().trim();
@@ -107,14 +446,15 @@ function verifyGatewayAuth(req, res, next) {
         return next();
     }
 
-    // Yalnız ENFORCE_GATEWAY_AUTH=true təyin edildikdə birbaşa sorğuları 403 ilə blokla
-    if (enforceAuth) {
-        return res.status(403).json({
-            success: false,
-            code: 403,
-            status: "error",
-            error: "Access denied. Direct requests to this server are not permitted."
+    if (ENFORCE_GATEWAY_AUTH) {
+        logScrapeEvent('warn', 'auth_rejected', {
+            requestId: req.requestContext?.requestId,
+            path: req.path,
+            method: req.method
         });
+        return res.status(403).json(
+            createApiErrorResponse(403, 'Access denied. Direct requests to this server are not permitted.')
+        );
     }
 
     req.authSource = 'direct';
@@ -122,46 +462,313 @@ function verifyGatewayAuth(req, res, next) {
 }
 
 // --------------------------------------------------------------------
-// 🏥 HEALTH CHECK ENDPOINT (Həm GET, həm də POST qəbul edir)
+// 💰 API PLAN VƏ TEXNİKİ LİMİT İDARƏETMƏSİ
 // --------------------------------------------------------------------
-app.all(['/health', '/healrh'], (req, res) => {
-    return res.status(200).json({
-        status: "ok",
-        message: "Server aktivdir və problemsiz işləyir.",
-        uptime_seconds: Math.floor(process.uptime()),
-        timestamp: new Date().toISOString()
+function resolvePlan(req) {
+    let plan = 'basic';
+    if (req.authSource === 'rapidapi') {
+        const rapidApiSub = (req.headers['x-rapidapi-subscription'] || '').toString().toLowerCase().trim();
+        plan = PLAN_ACCESS[rapidApiSub] ? rapidApiSub : 'basic';
+    } else if (req.authSource === 'admin_test') {
+        const adminTestPlan = (
+            req.headers['x-admin-test-plan'] ||
+            req.body?.plan ||
+            req.query?.plan ||
+            'basic'
+        ).toString().toLowerCase().trim();
+        plan = PLAN_ACCESS[adminTestPlan] ? adminTestPlan : 'basic';
+    } else {
+        plan = 'basic';
+    }
+    return plan;
+}
+
+function getPlanLimits(plan) {
+    const validPlan = PLAN_ACCESS[plan] ? plan : 'basic';
+    return {
+        para: PLAN_CONTENT_LIMITS.paragraphLimit[validPlan] !== undefined
+            ? PLAN_CONTENT_LIMITS.paragraphLimit[validPlan]
+            : 10,
+        img: PLAN_CONTENT_LIMITS.imageLimit[validPlan] !== undefined
+            ? PLAN_CONTENT_LIMITS.imageLimit[validPlan]
+            : 10,
+        link: PLAN_CONTENT_LIMITS.linkLimit[validPlan] !== undefined
+            ? PLAN_CONTENT_LIMITS.linkLimit[validPlan]
+            : 10,
+        textLen: PLAN_CONTENT_LIMITS.contentLimit[validPlan] !== undefined
+            ? PLAN_CONTENT_LIMITS.contentLimit[validPlan]
+            : 1000
+    };
+}
+
+function getTechnicalSafetyLimits() {
+    return { ...TECHNICAL_SAFETY_CAPS };
+}
+
+// --------------------------------------------------------------------
+// ⏱️ REQUEST DEADLINE, CONTEXT, TIMEOUT VƏ ABORT İDARƏETMƏSİ
+// --------------------------------------------------------------------
+function createRequestDeadline(totalBudgetMs = SCRAPE_TIMEOUT_MS) {
+    const startedAt = Date.now();
+    return {
+        startedAt,
+        totalBudgetMs,
+        deadlineAt: startedAt + totalBudgetMs
+    };
+}
+
+function getRemainingTime(deadline, minFloorMs = 250) {
+    if (!deadline || !deadline.deadlineAt) return SCRAPE_TIMEOUT_MS;
+    const remaining = deadline.deadlineAt - Date.now();
+    if (remaining <= 0) {
+        const err = new Error('Ümumi sorğu vaxt limiti bitdi (Timeout).');
+        err.statusCode = 504;
+        err.errorType = 'TIMEOUT_ERROR';
+        throw err;
+    }
+    return Math.max(minFloorMs, remaining);
+}
+
+function createRequestContext(req) {
+    const requestId = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : crypto.randomBytes(12).toString('hex');
+    const deadline = createRequestDeadline(SCRAPE_TIMEOUT_MS);
+    const context = {
+        requestId,
+        startedAt: deadline.startedAt,
+        deadline
+    };
+    if (req) {
+        req.requestContext = context;
+    }
+    return context;
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage = 'Əməliyyat vaxtı bitdi.', statusCode = 504, onTimeout = null) {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            if (typeof onTimeout === 'function') {
+                try { onTimeout(); } catch {}
+            }
+            const err = new Error(timeoutMessage);
+            err.statusCode = statusCode;
+            err.errorType = 'TIMEOUT_ERROR';
+            reject(err);
+        }, timeoutMs);
     });
-});
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+    });
+}
+
+function createScrapeAbortController(timeoutMs = SCRAPE_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+        const err = new Error('Səhifənin oxunma müddəti bitdi (Timeout).');
+        err.statusCode = 504;
+        err.errorType = 'TIMEOUT_ERROR';
+        controller.abort(err);
+    }, timeoutMs);
+
+    const cleanup = () => {
+        clearTimeout(timer);
+    };
+
+    return {
+        controller,
+        signal: controller.signal,
+        cleanup
+    };
+}
+
+function throwIfAborted(signal) {
+    if (signal && signal.aborted) {
+        const reason = signal.reason instanceof Error
+            ? signal.reason
+            : new Error('Sorğu vaxt bitdiyi üçün dayandırıldı.');
+        if (!reason.statusCode) reason.statusCode = 504;
+        if (!reason.errorType) reason.errorType = 'TIMEOUT_ERROR';
+        throw reason;
+    }
+}
+
+async function runScrapeWithTimeout(targetUrl, plan, deadline = null) {
+    const budgetMs = deadline ? getRemainingTime(deadline, 1000) : SCRAPE_TIMEOUT_MS;
+    const { controller, signal, cleanup } = createScrapeAbortController(budgetMs);
+    const sessionPromise = executeScrapeSession(targetUrl, plan, signal, deadline);
+
+    try {
+        return await withTimeout(
+            sessionPromise,
+            budgetMs,
+            'Səhifənin oxunma müddəti bitdi (Timeout).',
+            504,
+            () => {
+                const err = new Error('Səhifənin oxunma müddəti bitdi (Timeout).');
+                err.statusCode = 504;
+                err.errorType = 'TIMEOUT_ERROR';
+                controller.abort(err);
+            }
+        );
+    } catch (err) {
+        if (!signal.aborted) {
+            controller.abort(err);
+        }
+        // Slotun yalnız Chromium cleanup tamamlandıqdan sonra azad edilməsini təmin edir
+        await sessionPromise.catch(() => {});
+        throw err;
+    } finally {
+        cleanup();
+    }
+}
 
 // --------------------------------------------------------------------
-// 🔑 TƏHLÜKƏSİZLİK VƏ PLAN TƏNZİMLƏMƏLƏRİ (RAPIDAPI ADLARINA UYĞUNLAŞDIRILDI)
+// 🛡️ SSRF VƏ NETWORK SECURITY (CIDR IP TƏSNİFATI, DNS PINNING, EGRESS)
 // --------------------------------------------------------------------
-const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
-const BLOCKED_HOSTS_EXACT = ['localhost', '0.0.0.0'];
-const PRIVATE_IP_RANGES = [
-    { start: '127.0.0.0', end: '127.255.255.255' },
-    { start: '10.0.0.0', end: '10.255.255.255' },
-    { start: '172.16.0.0', end: '172.31.255.255' },
-    { start: '192.168.0.0', end: '192.168.255.255' },
-    { start: '169.254.0.0', end: '169.254.255.255' }
-];
-
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
-
-// RapidAPI plan adları: basic, pro, ultra, mega
-const PLAN_CONTENT_LIMITS = {
-    contentLimit:   { basic: 1000, pro: 5000, ultra: null, mega: null },
-    paragraphLimit: { basic: 10,   pro: 30,   ultra: null, mega: null },
-    imageLimit:     { basic: 10,   pro: 30,   ultra: null, mega: null },
-    linkLimit:      { basic: 10,   pro: 30,   ultra: null, mega: null }
-};
-
-const PLAN_ACCESS = { basic: 1, pro: 2, ultra: 3, mega: 4 };
-
 function ipToLong(ip) {
     const parts = ip.split('.');
-    if (parts.length !== 4) return 0;
-    return parts.reduce((acc, part) => (acc * 256) + parseInt(part, 10), 0);
+    if (parts.length !== 4) return null;
+    let total = 0;
+    for (const part of parts) {
+        if (!/^\d{1,3}$/.test(part)) return null;
+        const num = Number(part);
+        if (num < 0 || num > 255) return null;
+        total = (total * 256) + num;
+    }
+    return total >>> 0;
+}
+
+function classifyIpAddress(rawIp) {
+    const cleanIp = String(rawIp || '').trim().replace(/^\[|\]$/g, '').split('%')[0].toLowerCase();
+    const version = net.isIP(cleanIp);
+    if (version === 0) {
+        return { valid: false, version: 0, normalized: cleanIp, range: 'invalid', isGlobal: false };
+    }
+
+    // 1. Əgər ipaddr.js quraşdırılıbsa CIDR diapazonlarını dəqiqliklə təsnif et
+    if (ipaddr) {
+        try {
+            let parsed = ipaddr.parse(cleanIp);
+            if (parsed.kind() === 'ipv6' && parsed.isIPv4MappedAddress()) {
+                parsed = parsed.toIPv4Address();
+            }
+            const range = parsed.range();
+            const isGlobal = range === 'unicast';
+            return {
+                valid: true,
+                version: parsed.kind() === 'ipv4' ? 4 : 6,
+                normalized: parsed.toString(),
+                range,
+                isGlobal
+            };
+        } catch {
+            return { valid: false, version, normalized: cleanIp, range: 'parse_error', isGlobal: false };
+        }
+    }
+
+    // 2. Daxili CIDR / Special-Use təsnifatı
+    if (version === 4) {
+        const ipLong = ipToLong(cleanIp);
+        if (ipLong === null) {
+            return { valid: false, version: 4, normalized: cleanIp, range: 'invalid', isGlobal: false };
+        }
+        for (const r of PRIVATE_IPV4_RANGES) {
+            if (ipLong >= ipToLong(r.start) && ipLong <= ipToLong(r.end)) {
+                return { valid: true, version: 4, normalized: cleanIp, range: r.label, isGlobal: false };
+            }
+        }
+        return { valid: true, version: 4, normalized: cleanIp, range: 'unicast', isGlobal: true };
+    }
+
+    // IPv6 yoxlamaları
+    if (cleanIp === '::1' || cleanIp === '::' || /^0(:0)*:1$/.test(cleanIp) || /^0(:0)*:0$/.test(cleanIp)) {
+        return { valid: true, version: 6, normalized: cleanIp, range: 'loopback_or_unspecified', isGlobal: false };
+    }
+
+    // IPv4-mapped IPv6 (::ffff:a.b.c.d və ya ::ffff:7f00:1)
+    if (cleanIp.startsWith('::ffff:')) {
+        const mapped = cleanIp.slice(7);
+        if (net.isIPv4(mapped)) {
+            return classifyIpAddress(mapped);
+        }
+        const hexParts = mapped.split(':');
+        if (hexParts.length === 2) {
+            const hi = parseInt(hexParts[0], 16);
+            const lo = parseInt(hexParts[1], 16);
+            if (!Number.isNaN(hi) && !Number.isNaN(lo)) {
+                const v4 = `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+                return classifyIpAddress(v4);
+            }
+        }
+        return { valid: true, version: 6, normalized: cleanIp, range: 'ipv4_mapped_invalid', isGlobal: false };
+    }
+
+    // IPv4-compatible IPv6 (::127.0.0.1)
+    if (cleanIp.startsWith('::') && net.isIPv4(cleanIp.slice(2))) {
+        return classifyIpAddress(cleanIp.slice(2));
+    }
+
+    // NAT64 (64:ff9b::/96)
+    if (cleanIp.startsWith('64:ff9b:')) {
+        return { valid: true, version: 6, normalized: cleanIp, range: 'nat64', isGlobal: false };
+    }
+
+    const firstHextet = cleanIp.split(':')[0];
+    if (firstHextet) {
+        const val = parseInt(firstHextet, 16);
+        if (!Number.isNaN(val)) {
+            if (val === 0x0100 && cleanIp.startsWith('100::')) {
+                return { valid: true, version: 6, normalized: cleanIp, range: 'discard', isGlobal: false };
+            }
+            if (val === 0x2002) {
+                return { valid: true, version: 6, normalized: cleanIp, range: '6to4', isGlobal: false };
+            }
+            if (val >= 0xfe80 && val <= 0xfebf) {
+                return { valid: true, version: 6, normalized: cleanIp, range: 'link_local', isGlobal: false };
+            }
+            if (val >= 0xfc00 && val <= 0xfdff) {
+                return { valid: true, version: 6, normalized: cleanIp, range: 'unique_local', isGlobal: false };
+            }
+            if ((val & 0xff00) === 0xff00) {
+                return { valid: true, version: 6, normalized: cleanIp, range: 'multicast', isGlobal: false };
+            }
+            if (val === 0x2001 && (cleanIp.startsWith('2001:db8:') || cleanIp.startsWith('2001:0:'))) {
+                return { valid: true, version: 6, normalized: cleanIp, range: 'special_use', isGlobal: false };
+            }
+        }
+    }
+
+    return { valid: true, version: 6, normalized: cleanIp, range: 'unicast', isGlobal: true };
+}
+
+function isGloballyRoutableIp(ip) {
+    const info = classifyIpAddress(ip);
+    return Boolean(info.valid && info.isGlobal);
+}
+
+function isBlockedIpv4(ip) {
+    if (net.isIPv4(String(ip || '').trim()) === false) return true;
+    return !isGloballyRoutableIp(ip);
+}
+
+function isBlockedIpv6(rawIp) {
+    const cleaned = String(rawIp || '').trim().replace(/^\[|\]$/g, '').split('%')[0];
+    if (net.isIPv6(cleaned) === false) return true;
+    return !isGloballyRoutableIp(cleaned);
+}
+
+function isBlockedIpAddress(ip) {
+    return !isGloballyRoutableIp(ip);
+}
+
+function isPublicIpAddress(ip) {
+    return isGloballyRoutableIp(ip);
 }
 
 function isPrivateOrBlockedIP(input) {
@@ -172,25 +779,339 @@ function isPrivateOrBlockedIP(input) {
         }
         if (!hostname) return true;
 
-        const lower = hostname.toLowerCase();
-        if (BLOCKED_HOSTS_EXACT.includes(lower)) return true;
+        const lower = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+        if (!lower) return true;
 
-        const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
-        if (isIp) {
-            const ipLong = ipToLong(hostname);
-            for (const range of PRIVATE_IP_RANGES) {
-                if (ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end)) return true;
-            }
-            return false;
+        if (BLOCKED_HOSTNAMES_EXACT.has(lower)) return true;
+        if (BLOCKED_HOSTNAME_SUFFIXES.some(suffix => lower.endsWith(suffix))) return true;
+
+        if (/^\d+$/.test(lower) || /^0x[0-9a-f]+$/i.test(lower)) return true;
+
+        if (net.isIP(lower) !== 0) {
+            return !isGloballyRoutableIp(lower);
         }
 
-        if (lower === '[::1]' || lower === '::1') return true;
         return false;
     } catch {
         return true;
     }
 }
 
+function validateResolvedAddress(records, hostname) {
+    if (!Array.isArray(records) || records.length === 0) {
+        const err = new Error(`DNS_ERROR: "${hostname}" üçün etibarlı IP tapılmadı.`);
+        err.statusCode = 400;
+        err.errorType = 'DNS_ERROR';
+        throw err;
+    }
+
+    const validated = [];
+    for (const rec of records) {
+        if (!rec || !rec.address || !isGloballyRoutableIp(rec.address)) {
+            const err = new Error('SSRF_BLOCKED: Domen daxili, lokal və ya qadağan olunmuş IP ünvanına yönəlir.');
+            err.statusCode = 403;
+            err.errorType = 'SSRF_BLOCKED';
+            throw err;
+        }
+        validated.push({
+            address: rec.address,
+            family: rec.family || net.isIP(rec.address)
+        });
+    }
+
+    return validated;
+}
+
+async function resolvePublicAddresses(hostname, timeoutMs = DNS_TIMEOUT_MS) {
+    const cleanHost = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+
+    if (isPrivateOrBlockedIP(cleanHost)) {
+        const err = new Error('SSRF_BLOCKED: Daxili, lokal və ya metadata ünvanlarına icazə verilmir.');
+        err.statusCode = 403;
+        err.errorType = 'SSRF_BLOCKED';
+        throw err;
+    }
+
+    if (net.isIP(cleanHost) !== 0) {
+        if (!isGloballyRoutableIp(cleanHost)) {
+            const err = new Error('SSRF_BLOCKED: Qadağan olunmuş IP ünvanı.');
+            err.statusCode = 403;
+            err.errorType = 'SSRF_BLOCKED';
+            throw err;
+        }
+        return {
+            hostname: cleanHost,
+            addresses: [{ address: cleanHost, family: net.isIP(cleanHost) }]
+        };
+    }
+
+    let records;
+    try {
+        records = await withTimeout(
+            dns.lookup(cleanHost, { all: true, verbatim: true }),
+            timeoutMs,
+            'DNS_ERROR: Domen ünvanının cavabı gecikdi.',
+            400
+        );
+    } catch (err) {
+        if (err && err.statusCode) throw err;
+        const dnsErr = new Error('DNS_ERROR: Domen ünvanı tapılmadı və ya həll edilə bilmədi.');
+        dnsErr.statusCode = 400;
+        dnsErr.errorType = 'DNS_ERROR';
+        throw dnsErr;
+    }
+
+    const addresses = validateResolvedAddress(records, cleanHost);
+    return { hostname: cleanHost, addresses };
+}
+
+async function resolveAndValidateDns(hostname, timeoutMs = DNS_TIMEOUT_MS) {
+    const resolved = await resolvePublicAddresses(hostname, timeoutMs);
+    return resolved.addresses.map(a => a.address);
+}
+
+// Node.js HTTP/HTTPS client-ləri (Axios) üçün təsdiqlənmiş IP-yə bağlanan (DNS pinning) lookup
+function createPinnedLookup(resolvedInfo) {
+    const validList = Array.isArray(resolvedInfo?.addresses) ? resolvedInfo.addresses : [];
+    const expectedHost = (resolvedInfo?.hostname || '').toLowerCase();
+
+    return (hostname, options, callback) => {
+        const cb = typeof options === 'function' ? options : callback;
+        const opts = typeof options === 'object' && options !== null ? options : {};
+        const cleanQueryHost = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+
+        if (cleanQueryHost === expectedHost && validList.length > 0) {
+            if (opts.all) {
+                return process.nextTick(() => cb(null, validList));
+            }
+            const preferred = validList.find(a => !opts.family || a.family === opts.family) || validList[0];
+            return process.nextTick(() => cb(null, preferred.address, preferred.family));
+        }
+
+        // Digər domenlər üçün canlı DNS yoxlaması və SSRF filtri
+        resolvePublicAddresses(cleanQueryHost, DNS_TIMEOUT_MS)
+            .then(res => {
+                if (opts.all) return cb(null, res.addresses);
+                const pick = res.addresses.find(a => !opts.family || a.family === opts.family) || res.addresses[0];
+                return cb(null, pick.address, pick.family);
+            })
+            .catch(err => cb(err));
+    };
+}
+
+// Chromium üçün nəzarətli outbound egress proxy sazlaması (təyin edilibsə)
+function createEgressProxyConfig() {
+    if (!EGRESS_PROXY_URL) {
+        return { enabled: false, server: null, username: null, password: null, browserArg: null };
+    }
+    try {
+        const parsed = new URL(EGRESS_PROXY_URL);
+        if (!['http:', 'https:', 'socks5:'].includes(parsed.protocol)) {
+            return { enabled: false, server: null, username: null, password: null, browserArg: null };
+        }
+        const server = `${parsed.protocol}//${parsed.host}`;
+        return {
+            enabled: true,
+            server,
+            username: parsed.username ? decodeURIComponent(parsed.username) : null,
+            password: parsed.password ? decodeURIComponent(parsed.password) : null,
+            browserArg: `--proxy-server=${server}`
+        };
+    } catch {
+        return { enabled: false, server: null, username: null, password: null, browserArg: null };
+    }
+}
+
+async function validateTargetUrlSafety(rawUrl, deadline = null) {
+    let parsed;
+    try {
+        parsed = new URL(rawUrl);
+    } catch {
+        const err = new Error('Etibarsız URL formatı.');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+
+    if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
+        const err = new Error('Yalnız HTTP və HTTPS protokolları dəstəklənir.');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+
+    if (parsed.username || parsed.password) {
+        const err = new Error('URL daxilində istifadəçi adı/şifrə parametrlərinə icazə verilmir.');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+
+    const dnsTimeout = deadline ? Math.min(DNS_TIMEOUT_MS, getRemainingTime(deadline, 300)) : DNS_TIMEOUT_MS;
+
+    try {
+        const resolved = await resolvePublicAddresses(parsed.hostname, dnsTimeout);
+        parsed.resolvedAddresses = resolved.addresses;
+        return parsed;
+    } catch (dnsErr) {
+        const isSsrf = dnsErr.errorType === 'SSRF_BLOCKED' || String(dnsErr.message).startsWith('SSRF_BLOCKED');
+        const err = new Error(
+            isSsrf
+                ? 'Təhlükəsizlik səbəbilə daxili/lokal və ya metadata ünvanlarına icazə verilmir.'
+                : 'Domen ünvanı yoxlanılarkən xəta baş verdi və ya domen mövcud deyil.'
+        );
+        err.statusCode = isSsrf ? 403 : 400;
+        err.errorType = isSsrf ? 'SSRF_BLOCKED' : 'DNS_ERROR';
+        throw err;
+    }
+}
+
+async function validateRedirectTarget(locationHeader, currentUrl, deadline = null) {
+    if (!locationHeader || typeof locationHeader !== 'string') {
+        const err = new Error('Boş və ya etibarsız yönləndirmə (redirect) ünvanı.');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+
+    let nextUrl;
+    try {
+        nextUrl = new URL(locationHeader.trim(), currentUrl).href;
+    } catch {
+        const err = new Error('Etibarsız yönləndirmə (redirect) URL formatı.');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+
+    await validateTargetUrlSafety(nextUrl, deadline);
+    return nextUrl;
+}
+
+async function resolveShortUrl(initialUrl, deadline = null) {
+    let currentUrl = initialUrl;
+    const maxHops = 5;
+
+    for (let hop = 0; hop < maxHops; hop++) {
+        const parsed = await validateTargetUrlSafety(currentUrl, deadline);
+        if (!SHORT_URL_HOSTS.has(parsed.hostname.toLowerCase())) {
+            return currentUrl;
+        }
+
+        const hopTimeout = deadline ? Math.min(5000, getRemainingTime(deadline, 500)) : 5000;
+        const pinnedLookup = createPinnedLookup({
+            hostname: parsed.hostname,
+            addresses: parsed.resolvedAddresses || []
+        });
+
+        try {
+            const response = await axios.get(currentUrl, {
+                maxRedirects: 0,
+                timeout: hopTimeout,
+                httpAgent: new http.Agent({ lookup: pinnedLookup }),
+                httpsAgent: new https.Agent({ lookup: pinnedLookup, rejectUnauthorized: !ALLOW_INSECURE_TLS }),
+                validateStatus: (status) => status >= 200 && status < 400,
+                headers: { 'User-Agent': USER_AGENT }
+            });
+
+            if (response.status >= 300 && response.status < 400 && response.headers?.location) {
+                currentUrl = await validateRedirectTarget(response.headers.location, currentUrl, deadline);
+                continue;
+            }
+            return currentUrl;
+        } catch (err) {
+            if (err && err.statusCode) throw err;
+            return currentUrl;
+        }
+    }
+
+    return currentUrl;
+}
+
+// QEYD: Node.js DNS yoxlaması və Puppeteer request interception daxili IP-ləri bloklayır,
+// lakin Chromium öz daxili C++ resolver-i ilə soket açdığı üçün mikrosaniyəlik TOCTOU DNS rebinding
+// riskinə qarşı tam izolyasiya üçün EGRESS_PROXY_URL və ya server səviyyəsində egress firewall lazımdır.
+async function isAllowedRequestUrl(reqUrl, resourceType, validatedHostsCache) {
+    if (!reqUrl || typeof reqUrl !== 'string') {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    if (!/^https?:\/\//i.test(reqUrl)) {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    const lowerUrl = reqUrl.toLowerCase();
+    const adPatterns = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'];
+    const blockedResourceTypes = BLOCK_STYLESHEETS
+        ? ['image', 'media', 'font', 'stylesheet']
+        : ['image', 'media', 'font'];
+
+    if (
+        blockedResourceTypes.includes(resourceType) ||
+        adPatterns.some(k => lowerUrl.includes(k))
+    ) {
+        return { allowed: false, reason: 'blockedbyclient' };
+    }
+
+    let parsedSub;
+    try {
+        parsedSub = new URL(reqUrl);
+    } catch {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    if (!ALLOWED_URL_SCHEMES.includes(parsedSub.protocol) || parsedSub.username || parsedSub.password) {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    const subHost = parsedSub.hostname.toLowerCase();
+    if (isPrivateOrBlockedIP(subHost)) {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    if (!validatedHostsCache.has(subHost)) {
+        try {
+            await resolveAndValidateDns(subHost, DNS_TIMEOUT_MS);
+            validatedHostsCache.set(subHost, true);
+        } catch {
+            validatedHostsCache.set(subHost, false);
+        }
+    }
+
+    if (!validatedHostsCache.get(subHost)) {
+        return { allowed: false, reason: 'accessdenied' };
+    }
+
+    return { allowed: true };
+}
+
+async function installRequestSecurityGuards(page, signal) {
+    const validatedHostsCache = new Map();
+    await page.setRequestInterception(true);
+
+    page.on('request', async (req) => {
+        try {
+            if (signal && signal.aborted) {
+                await req.abort('aborted');
+                return;
+            }
+
+            const check = await isAllowedRequestUrl(req.url(), req.resourceType(), validatedHostsCache);
+            if (!check.allowed) {
+                await req.abort(check.reason || 'accessdenied');
+                return;
+            }
+
+            await req.continue();
+        } catch {
+            try { await req.abort(); } catch {}
+        }
+    });
+}
+
+// --------------------------------------------------------------------
+// 🧹 MƏTN, ŞƏKİL, VİDEO VƏ HTML/XSS TƏHLÜKƏSİZLİYİ
+// --------------------------------------------------------------------
 function cleanText(text) {
     if (!text || typeof text !== 'string') return text;
     return text
@@ -201,56 +1122,206 @@ function cleanText(text) {
         .trim();
 }
 
-// ⚡ Qısa linkləri əsl URL-ə çevirir
-async function resolveShortUrl(targetUrl) {
-    try {
-        const u = new URL(targetUrl);
-        const shortHosts = ['pin.it', 'bit.ly', 't.co', 'tinyurl.com', 'is.gd', 'buff.ly', 'ow.ly'];
-        if (shortHosts.includes(u.hostname.toLowerCase())) {
-            const redirect = await axios.get(targetUrl, {
-                maxRedirects: 5,
-                timeout: 5000,
-                validateStatus: (s) => s >= 200 && s < 400,
-                headers: { 'User-Agent': USER_AGENT }
-            });
-            return redirect.request?.res?.responseUrl || redirect.headers?.location || targetUrl;
-        }
-    } catch {}
-    return targetUrl;
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
-// 📰 Responsiv Məqalə Embed Kartı
-function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
-    const hasThumb = thumbnail && !/nophoto|no-photo|no_photo|placeholder|No\+Thumbnail|thunk_600/i.test(thumbnail);
-    return `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${thumbnail}" alt="${title}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${siteName || 'Veb Məqalə'}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${title}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${description}</p></div></a></div>`;
-}
-
-function normalizeEmbedUrl(rawUrl) {
+function sanitizeHttpUrl(rawUrl) {
     const clean = String(rawUrl || '').replace(/\\/g, '/').trim();
-    if (!clean || /^(blob:|javascript:|data:)/i.test(clean)) return '';
+    if (!clean) return '';
     try {
         const u = new URL(clean);
-        const host = u.hostname.toLowerCase();
-        if (host.includes('youtu.be')) {
-            const vid = u.pathname.replace(/^\/+/, '').split('/')[0];
-            if (vid) return `https://www.youtube.com/embed/${vid}`;
-        }
-        if (host.includes('youtube.com') && u.pathname === '/watch') {
-            const vid = u.searchParams.get('v');
-            if (vid) return `https://www.youtube.com/embed/${vid}`;
-        }
+        if (!ALLOWED_URL_SCHEMES.includes(u.protocol)) return '';
+        if (isPrivateOrBlockedIP(u.hostname)) return '';
         return u.href;
     } catch {
-        return clean;
+        return '';
     }
 }
 
-function escapeHtmlAttr(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+function isPlaceholderImage(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string') return true;
+    const lower = urlStr.toLowerCase();
+    return [
+        'nophoto', 'no-photo', 'no_photo', 'placeholder', 'no+thumbnail',
+        'thunk_600', 'default-image', 'default_image', 'blank.gif',
+        'atrk.gif', '1x1.', 'spacer.gif', 'pixel.gif', 'tracker'
+    ].some(k => lower.includes(k));
+}
+
+function normalizeImageUrl(rawUrl, baseUrl = '') {
+    const valid = sanitizeHttpUrl(rawUrl || '');
+    if (!valid && baseUrl && rawUrl) {
+        try {
+            const abs = new URL(String(rawUrl).replace(/\\/g, '/').trim(), baseUrl).href;
+            return normalizeImageUrl(abs);
+        } catch {
+            return '';
+        }
+    }
+    if (!valid) return '';
+    try {
+        const u = new URL(valid);
+        const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'];
+        trackingParams.forEach(p => u.searchParams.delete(p));
+        return u.href;
+    } catch {
+        return valid;
+    }
+}
+
+function scoreImageCandidate(candidate) {
+    const url = candidate?.url || '';
+    if (!url) return -1000;
+
+    let score = 0;
+    const lower = url.toLowerCase();
+
+    if (isPlaceholderImage(lower)) score -= 500;
+    if (/banner|\/ads\/|\/adv\/|doubleclick|googlesyndication|logo|icon|favicon|sprite/i.test(lower)) {
+        score -= 300;
+    }
+
+    const sourceWeights = {
+        og_meta: 40,
+        twitter_meta: 35,
+        json_ld: 50,
+        article_body: 45,
+        dom: 25
+    };
+    score += sourceWeights[candidate.source] || 10;
+
+    if (candidate.alt && candidate.alt.length >= 8) score += 15;
+    if (/\.(jpg|jpeg|webp|png)(\?|$)/i.test(lower)) score += 10;
+    if (/(825|1024|1200|1280|large|full|original)/i.test(lower)) score += 15;
+
+    return score;
+}
+
+function selectBestThumbnail(ogImage, twitterImage, articleImages = [], jsonLdImages = []) {
+    const rawCandidates = [
+        { url: normalizeImageUrl(ogImage), source: 'og_meta', alt: '' },
+        { url: normalizeImageUrl(twitterImage), source: 'twitter_meta', alt: '' },
+        ...(Array.isArray(jsonLdImages)
+            ? jsonLdImages.map(u => ({ url: normalizeImageUrl(u), source: 'json_ld', alt: '' }))
+            : []),
+        ...(Array.isArray(articleImages)
+            ? articleImages.map(u => ({ url: normalizeImageUrl(u), source: 'article_body', alt: '' }))
+            : [])
+    ].filter(c => Boolean(c.url));
+
+    if (rawCandidates.length === 0) return null;
+
+    let best = rawCandidates[0];
+    let bestScore = scoreImageCandidate(best);
+
+    for (let i = 1; i < rawCandidates.length; i++) {
+        const sc = scoreImageCandidate(rawCandidates[i]);
+        if (sc > bestScore) {
+            best = rawCandidates[i];
+            bestScore = sc;
+        }
+    }
+
+    return best.url || null;
+}
+
+function validateVideoSource(rawUrl) {
+    const clean = String(rawUrl || '').replace(/\\/g, '/').trim();
+    if (!clean || /^(blob:|javascript:|data:|vbscript:|file:)/i.test(clean)) return '';
+    const valid = sanitizeHttpUrl(clean);
+    if (!valid) return '';
+    if (/ads\.|doubleclick|googlesyndication|\/vast|\/preroll|\/midroll|\/postroll/i.test(valid)) {
+        return '';
+    }
+    return valid;
+}
+
+function isAllowedEmbedHost(hostname) {
+    const lower = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+    if (!lower || isPrivateOrBlockedIP(lower)) return false;
+    if (ALLOWED_EMBED_HOSTS.has(lower)) return true;
+
+    for (const allowed of ALLOWED_EMBED_HOSTS) {
+        if (lower.endsWith('.' + allowed)) return true;
+    }
+    return false;
+}
+
+function normalizeEmbedUrl(rawUrl) {
+    const valid = validateVideoSource(rawUrl);
+    if (!valid) return '';
+    try {
+        const u = new URL(valid);
+        const host = u.hostname.toLowerCase();
+        if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+            const vid = u.pathname.replace(/^\/+/, '').split('/')[0];
+            if (vid && /^[a-zA-Z0-9_-]{6,20}$/.test(vid)) {
+                return `https://www.youtube.com/embed/${vid}`;
+            }
+        }
+        if ((host === 'youtube.com' || host.endsWith('.youtube.com')) && u.pathname === '/watch') {
+            const vid = u.searchParams.get('v');
+            if (vid && /^[a-zA-Z0-9_-]{6,20}$/.test(vid)) {
+                return `https://www.youtube.com/embed/${vid}`;
+            }
+        }
+        return u.href;
+    } catch {
+        return '';
+    }
+}
+
+function validateEmbedUrl(rawUrl) {
+    const normalized = normalizeEmbedUrl(rawUrl);
+    if (!normalized) return { valid: false, url: '', kind: 'invalid' };
+
+    try {
+        const u = new URL(normalized);
+        const isDirectMp4 = /\.mp4(\?.*)?$/i.test(u.pathname);
+        const isHlsStream = /\.m3u8(\?.*)?$/i.test(u.pathname);
+        const isDashStream = /\.mpd(\?.*)?$/i.test(u.pathname);
+
+        if (isDirectMp4) return { valid: true, url: u.href, kind: 'mp4' };
+        if (isHlsStream) return { valid: true, url: u.href, kind: 'hls' };
+        if (isDashStream) return { valid: true, url: u.href, kind: 'mpd' };
+
+        if (u.protocol === 'https:' && isAllowedEmbedHost(u.hostname)) {
+            return { valid: true, url: u.href, kind: 'iframe' };
+        }
+
+        return { valid: true, url: u.href, kind: 'external_link' };
+    } catch {
+        return { valid: false, url: '', kind: 'invalid' };
+    }
+}
+
+// Əlavə müdafiə qatı: HTML həmişə escaped template-lərdən qurulur
+function sanitizeEmbedHtml(html) {
+    return String(html || '')
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<(object|embed|form|meta|base|link)\b[^>]*>/gi, '')
+        .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+        .replace(/\b(href|src)\s*=\s*(['"])\s*(javascript:|data:|vbscript:|blob:)[^'"]*\2/gi, '$1="#"');
+}
+
+function generateArticleEmbedHtml(title, description, thumbnail, url, siteName) {
+    const safeUrl = escapeHtml(sanitizeHttpUrl(url) || '#');
+    const validThumb = sanitizeHttpUrl(thumbnail);
+    const hasThumb = Boolean(validThumb) && !isPlaceholderImage(validThumb);
+    const safeThumb = escapeHtml(validThumb);
+    const safeTitle = escapeHtml(cleanText(title) || 'Veb Məqalə');
+    const safeDesc = escapeHtml(cleanText(description) || '');
+    const safeSite = escapeHtml(cleanText(siteName) || 'Veb Məqalə');
+
+    const rawHtml = `<div class="web-article-embed" style="max-width:560px;margin:12px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">${hasThumb ? `<div style="width:100%;max-height:280px;overflow:hidden;background:#f8fafc;"><img src="${safeThumb}" alt="${safeTitle}" style="width:100%;height:auto;display:block;object-fit:cover;" /></div>` : ''}<div style="padding:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">${safeSite}</div><h3 style="margin:0 0 8px 0;font-size:17px;font-weight:700;color:#0f172a;line-height:1.35;">${safeTitle}</h3><p style="margin:0;font-size:13px;color:#475569;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeDesc}</p></div></a></div>`;
+
+    return sanitizeEmbedHtml(rawHtml);
 }
 
 function buildVideoEmbeds(videoSources = [], limit = 10) {
@@ -261,25 +1332,26 @@ function buildVideoEmbeds(videoSources = [], limit = 10) {
     const items = [];
     for (const rawUrl of videoSources) {
         if (items.length >= limit) break;
-        const normalizedUrl = normalizeEmbedUrl(rawUrl);
-        if (!normalizedUrl) continue;
+        const checked = validateEmbedUrl(rawUrl);
+        if (!checked.valid) continue;
 
-        const safeUrl = escapeHtmlAttr(normalizedUrl);
-        const isDirectMp4 = /\.mp4(\?.*)?$/i.test(normalizedUrl);
-        const isHlsStream = /\.m3u8(\?.*)?$/i.test(normalizedUrl);
-        const type = isDirectMp4 ? 'mp4' : isHlsStream ? 'hls' : 'iframe';
+        const safeUrl = escapeHtml(checked.url);
+        const type = checked.kind;
         const index = items.length;
 
         let html = '';
-        if (isDirectMp4) {
+        if (type === 'mp4') {
             html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);"><video controls preload="metadata" src="${safeUrl}" style="width:100%;height:auto;display:block;background:#000;"></video></div>`;
-        } else if (isHlsStream) {
-            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#0f172a;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:6px;">HLS Video Axını (.m3u8)</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;word-break:break-all;">${safeUrl}</a></div>`;
+        } else if (type === 'hls' || type === 'mpd') {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#0f172a;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:6px;">Video Axını (${type.toUpperCase()})</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;word-break:break-all;">${safeUrl}</a></div>`;
+        } else if (type === 'iframe') {
+            html = `<div class="web-video-embed" data-video-index="${index}" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:12px 0;background:#000;"><iframe src="${safeUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy" referrerpolicy="no-referrer"></iframe></div>`;
         } else {
-            html = `<div class="web-video-embed" data-video-index="${index}" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin:12px 0;background:#000;"><iframe src="${safeUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe></div>`;
+            html = `<div class="web-video-embed" data-video-index="${index}" style="max-width:560px;margin:12px 0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;"><div style="font-weight:600;margin-bottom:4px;">Video Mənbəyi</div><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;word-break:break-all;">${safeUrl}</a></div>`;
         }
 
-        items.push({ index: index + 1, url: normalizedUrl, type, html });
+        const safeHtml = sanitizeEmbedHtml(html);
+        items.push({ index: index + 1, url: checked.url, type, html: safeHtml });
     }
 
     return {
@@ -289,84 +1361,684 @@ function buildVideoEmbeds(videoSources = [], limit = 10) {
 }
 
 // --------------------------------------------------------------------
+// 🎬 DİNAMİK ŞƏBƏKƏ CAVABLARINDAN VİDEO AŞKARLANMASI
+// --------------------------------------------------------------------
+function isVideoMimeType(contentType = '', url = '') {
+    const ct = String(contentType || '').toLowerCase();
+    const u = String(url || '').toLowerCase();
+
+    const mimeMatches = [
+        'video/mp4',
+        'video/webm',
+        'video/ogg',
+        'application/vnd.apple.mpegurl',
+        'application/x-mpegurl',
+        'application/dash+xml'
+    ].some(m => ct.includes(m));
+
+    if (mimeMatches) return true;
+    if (/\.(mp4|m3u8|mpd)(\?|$)/i.test(u) && !ct.includes('text/html')) return true;
+    return false;
+}
+
+function collectVideoNetworkRequests(page) {
+    const networkVideos = new Set();
+
+    page.on('response', (response) => {
+        try {
+            const status = response.status();
+            if (status < 200 || status >= 300) return;
+
+            const reqUrl = response.url();
+            const headers = response.headers() || {};
+            const contentType = headers['content-type'] || '';
+
+            if (isVideoMimeType(contentType, reqUrl)) {
+                const validUrl = validateVideoSource(reqUrl);
+                if (validUrl && networkVideos.size < TECHNICAL_SAFETY_CAPS.maxVideos) {
+                    networkVideos.add(validUrl);
+                }
+            }
+        } catch {}
+    });
+
+    return networkVideos;
+}
+
+// --------------------------------------------------------------------
+// 🚦 CLOUDFLARE, ACCESS DENIED VƏ XƏTA TƏSNİFATI
+// --------------------------------------------------------------------
+function detectCloudflareChallenge(title = '', description = '', bodyText = '', statusCode = 200) {
+    const t = String(title || '').toLowerCase();
+    const d = String(description || '').toLowerCase();
+    const b = String(bodyText || '').toLowerCase();
+
+    const patterns = [
+        'just a moment',
+        'bir dakika lütfen',
+        'attention required',
+        'checking your browser',
+        'kötü niyetli botlara karşı',
+        'enable javascript and cookies to continue',
+        'cf-browser-verification',
+        'verify you are human',
+        'ray id:'
+    ];
+
+    const matched = patterns.some(p => t.includes(p) || d.includes(p) || b.includes(p));
+    if (matched) return true;
+    if ((statusCode === 403 || statusCode === 503) && (t.includes('cloudflare') || b.includes('cloudflare'))) {
+        return true;
+    }
+    return false;
+}
+
+function detectAccessDenied(title = '', description = '', bodyText = '', statusCode = 200) {
+    const t = String(title || '').toLowerCase().trim();
+    const d = String(description || '').toLowerCase();
+    const b = String(bodyText || '').toLowerCase();
+
+    if (statusCode === 401 || statusCode === 403) return true;
+
+    const deniedTitles = [
+        'access denied',
+        '403 forbidden',
+        'forbidden',
+        'request blocked',
+        'error 403',
+        'you have been blocked'
+    ];
+
+    if (deniedTitles.some(p => t === p || t.startsWith(p))) return true;
+    if (b.length < 600 && (d.includes('access denied') || b.includes('you do not have permission to access'))) {
+        return true;
+    }
+
+    return false;
+}
+
+function classifyScrapeError(err) {
+    const msg = String(err?.message || 'Bilinməyən xəta');
+    const lower = msg.toLowerCase();
+
+    if (err?.errorType) {
+        return { type: err.errorType, message: msg };
+    }
+    if (lower.includes('ssrf_blocked') || lower.includes('daxili/lokal')) {
+        return { type: 'SSRF_BLOCKED', message: msg };
+    }
+    if (lower.includes('dns_error') || lower.includes('enotfound') || lower.includes('eai_again')) {
+        return { type: 'DNS_ERROR', message: 'Domen ünvanı tapılmadı və ya DNS həll edilə bilmədi.' };
+    }
+    if (lower.includes('timeout') || lower.includes('timed out') || err?.name === 'TimeoutError') {
+        return { type: 'TIMEOUT_ERROR', message: 'Səhifənin oxunma müddəti bitdi (Timeout).' };
+    }
+    if (lower.includes('növbə') || lower.includes('yüklüdür')) {
+        return { type: 'QUEUE_FULL', message: msg };
+    }
+    if (lower.includes('err_http_response_code_failure') || lower.includes('404')) {
+        return { type: 'NOT_FOUND', message: 'Hədəf səhifə tapılmadı (404).' };
+    }
+    if (lower.includes('429') || lower.includes('too many requests')) {
+        return { type: 'RATE_LIMITED', message: 'Hədəf sayt sorğu limitini aşdığı üçün müvəqqəti blokladı (429).' };
+    }
+    if (lower.includes('net::err_')) {
+        return { type: 'NETWORK_ERROR', message: 'Hədəf sayta şəbəkə bağlantısı qurula bilmədi.' };
+    }
+
+    return { type: 'INTERNAL_ERROR', message: 'Səhifə oxunarkən xəta baş verdi: ' + msg };
+}
+
+function mapScrapeErrorToHttpStatus(errorType, fallbackCode = 500) {
+    const map = {
+        VALIDATION_ERROR: 400,
+        SOCIAL_BLOCKED: 400,
+        DNS_ERROR: 400,
+        AUTH_ERROR: 403,
+        SSRF_BLOCKED: 403,
+        CLOUDFLARE_BLOCKED: 403,
+        ACCESS_DENIED: 403,
+        NOT_FOUND: 404,
+        METHOD_NOT_ALLOWED: 405,
+        RATE_LIMITED: 429,
+        NETWORK_ERROR: 502,
+        QUEUE_FULL: 503,
+        TIMEOUT_ERROR: 504,
+        INTERNAL_ERROR: 500
+    };
+    return map[errorType] || fallbackCode || 500;
+}
+
+function createApiErrorResponse(code, message, extra = {}) {
+    return {
+        success: false,
+        code,
+        status: 'error',
+        error: message,
+        ...extra
+    };
+}
+
+// --------------------------------------------------------------------
+// 📦 RESPONSE SIZE, METADATA NORMALIZATION & SANITIZATION
+// --------------------------------------------------------------------
+function getUtf8ByteLength(value) {
+    if (value === null || value === undefined) return 0;
+    const str = typeof value === 'string' ? value : JSON.stringify(value);
+    return Buffer.byteLength(str, 'utf8');
+}
+
+function enforceMetaLimits(allMetaTags) {
+    if (!allMetaTags || typeof allMetaTags !== 'object') return {};
+
+    const maxTags = TECHNICAL_SAFETY_CAPS.maxMetaTags;
+    const maxBytes = TECHNICAL_SAFETY_CAPS.maxMetaBytes;
+
+    const bounded = {};
+    let count = 0;
+    let totalBytes = 2;
+
+    for (const [rawKey, rawVal] of Object.entries(allMetaTags)) {
+        if (count >= maxTags) break;
+        const key = String(rawKey || '').slice(0, 128);
+        const val = String(rawVal || '').slice(0, 1024);
+        if (!key) continue;
+
+        const entryBytes = getUtf8ByteLength(key) + getUtf8ByteLength(val) + 6;
+        if (totalBytes + entryBytes > maxBytes) break;
+
+        bounded[key] = val;
+        totalBytes += entryBytes;
+        count++;
+    }
+
+    return bounded;
+}
+
+function enforceJsonLdLimits(jsonLdList) {
+    if (!Array.isArray(jsonLdList)) return [];
+
+    const maxBytes = TECHNICAL_SAFETY_CAPS.maxJsonLdBytes;
+    const maxNodes = TECHNICAL_SAFETY_CAPS.maxJsonLdNodes;
+    const maxDepth = TECHNICAL_SAFETY_CAPS.maxJsonLdDepth;
+
+    const pruneNode = (val, depth, state) => {
+        if (depth > maxDepth || state.nodes > maxNodes) return undefined;
+        if (val === null || typeof val !== 'object') return val;
+
+        state.nodes++;
+        if (Array.isArray(val)) {
+            const arr = [];
+            for (const item of val) {
+                if (state.nodes > maxNodes) break;
+                const pruned = pruneNode(item, depth + 1, state);
+                if (pruned !== undefined) arr.push(pruned);
+            }
+            return arr;
+        }
+
+        const obj = {};
+        for (const [k, v] of Object.entries(val)) {
+            if (state.nodes > maxNodes) break;
+            const pruned = pruneNode(v, depth + 1, state);
+            if (pruned !== undefined) obj[k] = pruned;
+        }
+        return obj;
+    };
+
+    const result = [];
+    const state = { nodes: 0 };
+    let currentBytes = 2;
+
+    for (const entry of jsonLdList) {
+        const prunedEntry = pruneNode(entry, 1, state);
+        if (prunedEntry === undefined) continue;
+        const entryBytes = getUtf8ByteLength(prunedEntry);
+        if (currentBytes + entryBytes > maxBytes) break;
+        result.push(prunedEntry);
+        currentBytes += entryBytes + 1;
+    }
+
+    return result;
+}
+
+function createCompactResponseFallback(result, maxBytes) {
+    const compact = {
+        success: Boolean(result.success),
+        code: Number(result.code) || 200,
+        status: result.status || 'ok',
+        plan_type: result.plan_type || 'basic',
+        name: cleanText(result.name || '').slice(0, 300) || 'Səhifə Başlığı Yoxdur',
+        description: cleanText(result.description || '').slice(0, 500) || 'Təsvir tapılmadı',
+        thumbnail_url: result.thumbnail_url || null,
+        favicon_url: result.favicon_url || null,
+        canonical_url: result.canonical_url || null,
+        author: result.author ? cleanText(result.author).slice(0, 150) : null,
+        site_name: cleanText(result.site_name || '').slice(0, 150),
+        embed_html: '',
+        is_video: Boolean(result.is_video),
+        head: {
+            title: cleanText(result.head?.title || '').slice(0, 300),
+            description: cleanText(result.head?.description || '').slice(0, 500),
+            site_name: cleanText(result.head?.site_name || '').slice(0, 150),
+            canonical_url: result.head?.canonical_url || '',
+            favicon: result.head?.favicon || '',
+            author: cleanText(result.head?.author || '').slice(0, 150),
+            keywords: '',
+            language: result.head?.language || '',
+            charset: result.head?.charset || 'UTF-8',
+            open_graph: {},
+            twitter: {},
+            json_ld: [],
+            all_meta_tags: {}
+        },
+        deep_data: {
+            plan: result.deep_data?.plan || result.plan_type || 'basic',
+            error: 'Response truncated to enforce maximum byte size limit.',
+            pageContent: String(result.deep_data?.pageContent || '').slice(0, 4000),
+            paragraphs: Array.isArray(result.deep_data?.paragraphs) ? result.deep_data.paragraphs.slice(0, 10) : [],
+            images: Array.isArray(result.deep_data?.images) ? result.deep_data.images.slice(0, 10) : [],
+            classified_images: [],
+            links: Array.isArray(result.deep_data?.links) ? result.deep_data.links.slice(0, 10) : [],
+            videoSources: Array.isArray(result.deep_data?.videoSources) ? result.deep_data.videoSources.slice(0, 10) : [],
+            has_video_sources: Boolean(result.deep_data?.has_video_sources)
+        },
+        meta: result.meta || {}
+    };
+
+    if (getUtf8ByteLength(compact) > maxBytes) {
+        compact.deep_data.pageContent = compact.deep_data.pageContent.slice(0, 500);
+        compact.deep_data.paragraphs = [];
+        compact.deep_data.links = [];
+        compact.deep_data.images = [];
+    }
+
+    return compact;
+}
+
+function fitResponseToByteLimit(result, maxBytes = TECHNICAL_SAFETY_CAPS.maxResponseBytes) {
+    if (getUtf8ByteLength(result) <= maxBytes) return result;
+
+    if (result?.head) {
+        result.head.all_meta_tags = {};
+    }
+    if (getUtf8ByteLength(result) <= maxBytes) return result;
+
+    if (result?.head) {
+        result.head.json_ld = [];
+    }
+    if (getUtf8ByteLength(result) <= maxBytes) return result;
+
+    if (result?.deep_data) {
+        if (Array.isArray(result.deep_data.links)) {
+            result.deep_data.links = result.deep_data.links.slice(0, 30);
+        }
+        if (Array.isArray(result.deep_data.classified_images)) {
+            result.deep_data.classified_images = result.deep_data.classified_images.slice(0, 30);
+        }
+        if (Array.isArray(result.deep_data.images)) {
+            result.deep_data.images = result.deep_data.images.slice(0, 30);
+        }
+    }
+    if (getUtf8ByteLength(result) <= maxBytes) return result;
+
+    if (result?.deep_data && typeof result.deep_data.pageContent === 'string') {
+        result.deep_data.pageContent = result.deep_data.pageContent.slice(0, 30000) + '...';
+        result.deep_data.paragraphs = result.deep_data.pageContent.split('\n\n').slice(0, 50);
+    }
+    if (getUtf8ByteLength(result) <= maxBytes) return result;
+
+    return createCompactResponseFallback(result, maxBytes);
+}
+
+function enforceResponseLimits(result) {
+    const safety = getTechnicalSafetyLimits();
+
+    if (result?.head) {
+        result.head.all_meta_tags = enforceMetaLimits(result.head.all_meta_tags);
+        result.head.json_ld = enforceJsonLdLimits(result.head.json_ld);
+    }
+
+    if (result?.deep_data) {
+        if (typeof result.deep_data.pageContent === 'string' && result.deep_data.pageContent.length > safety.maxTextChars) {
+            result.deep_data.pageContent = result.deep_data.pageContent.slice(0, safety.maxTextChars) + '...';
+        }
+        if (Array.isArray(result.deep_data.paragraphs) && result.deep_data.paragraphs.length > safety.maxParagraphs) {
+            result.deep_data.paragraphs = result.deep_data.paragraphs.slice(0, safety.maxParagraphs);
+        }
+        if (Array.isArray(result.deep_data.images) && result.deep_data.images.length > safety.maxImages) {
+            result.deep_data.images = result.deep_data.images.slice(0, safety.maxImages);
+        }
+        if (Array.isArray(result.deep_data.links) && result.deep_data.links.length > safety.maxLinks) {
+            result.deep_data.links = result.deep_data.links.slice(0, safety.maxLinks);
+        }
+        if (Array.isArray(result.deep_data.videoSources) && result.deep_data.videoSources.length > safety.maxVideos) {
+            result.deep_data.videoSources = result.deep_data.videoSources.slice(0, safety.maxVideos);
+        }
+    }
+
+    return fitResponseToByteLimit(result, safety.maxResponseBytes);
+}
+
+function extractArticleWordCount(fullText) {
+    const cleaned = cleanText(fullText || '');
+    if (!cleaned) return 0;
+    return cleaned.split(/\s+/).filter(Boolean).length;
+}
+
+function normalizeArticleMetadata(head, extractedHead, fullText) {
+    const normalized = { ...head };
+
+    const publishedTime = cleanText(extractedHead?.published_time || '');
+    const modifiedTime = cleanText(extractedHead?.modified_time || '');
+    const section = cleanText(extractedHead?.section || '');
+    const publisherName = cleanText(extractedHead?.publisher?.name || normalized.site_name || '');
+    const publisherLogo = sanitizeHttpUrl(extractedHead?.publisher?.logo || '');
+    const wordCount = extractArticleWordCount(fullText);
+
+    // Mövcud açarlar qorunur, yeni metadata sahələri optional/additive olaraq əlavə olunur
+    if (publishedTime) normalized.published_time = publishedTime;
+    if (modifiedTime) normalized.modified_time = modifiedTime;
+    if (section) normalized.section = section;
+    if (publisherName || publisherLogo) {
+        normalized.publisher = {
+            name: publisherName || null,
+            logo: publisherLogo || null
+        };
+    }
+    normalized.word_count = wordCount;
+
+    return normalized;
+}
+
+function sanitizeApiResponse(result) {
+    const head = result.head || {};
+    const deep = result.deep_data || {};
+
+    const sanitizedHead = {
+        title: cleanText(head.title) || '',
+        description: cleanText(head.description) || '',
+        site_name: cleanText(head.site_name) || '',
+        canonical_url: head.canonical_url || '',
+        favicon: head.favicon || '',
+        author: cleanText(head.author) || '',
+        keywords: cleanText(head.keywords) || '',
+        language: head.language || '',
+        charset: head.charset || 'UTF-8',
+        open_graph: (head.open_graph && typeof head.open_graph === 'object') ? head.open_graph : {},
+        twitter: (head.twitter && typeof head.twitter === 'object') ? head.twitter : {},
+        json_ld: Array.isArray(head.json_ld) ? head.json_ld : [],
+        all_meta_tags: (head.all_meta_tags && typeof head.all_meta_tags === 'object') ? head.all_meta_tags : {}
+    };
+
+    if (head.published_time) sanitizedHead.published_time = head.published_time;
+    if (head.modified_time) sanitizedHead.modified_time = head.modified_time;
+    if (head.section) sanitizedHead.section = head.section;
+    if (head.publisher) sanitizedHead.publisher = head.publisher;
+    if (typeof head.word_count === 'number') sanitizedHead.word_count = head.word_count;
+
+    return {
+        success: Boolean(result.success),
+        code: Number(result.code) || 200,
+        status: result.status || 'ok',
+        plan_type: result.plan_type || 'basic',
+        name: cleanText(result.name) || 'Səhifə Başlığı Yoxdur',
+        description: cleanText(result.description) || 'Təsvir tapılmadı',
+        thumbnail_url: result.thumbnail_url || null,
+        favicon_url: result.favicon_url || null,
+        canonical_url: result.canonical_url || null,
+        author: result.author ? cleanText(result.author) : null,
+        site_name: cleanText(result.site_name) || '',
+        embed_html: sanitizeEmbedHtml(result.embed_html || ''),
+        is_video: Boolean(result.is_video),
+        head: sanitizedHead,
+        deep_data: {
+            plan: deep.plan || result.plan_type || 'basic',
+            error: deep.error || null,
+            pageContent: typeof deep.pageContent === 'string' ? deep.pageContent : '',
+            paragraphs: Array.isArray(deep.paragraphs) ? deep.paragraphs : [],
+            images: Array.isArray(deep.images) ? deep.images : [],
+            classified_images: Array.isArray(deep.classified_images) ? deep.classified_images : [],
+            links: Array.isArray(deep.links) ? deep.links : [],
+            videoSources: Array.isArray(deep.videoSources) ? deep.videoSources : [],
+            has_video_sources: Boolean(deep.has_video_sources)
+        },
+        meta: result.meta || {}
+    };
+}
+
+// --------------------------------------------------------------------
+// 🚦 BRAUZER CONCURRENCY, REGISTRY, LAUNCH TIMEOUT VƏ CLEANUP
+// --------------------------------------------------------------------
+function registerActiveBrowser(browser) {
+    if (!browser) return null;
+    const id = crypto.randomBytes(8).toString('hex');
+    const proc = typeof browser.process === 'function' ? browser.process() : null;
+    activeBrowserRegistry.set(id, {
+        id,
+        browser,
+        pid: proc?.pid || null,
+        createdAt: Date.now()
+    });
+    return id;
+}
+
+function unregisterActiveBrowser(browserId) {
+    if (browserId && activeBrowserRegistry.has(browserId)) {
+        activeBrowserRegistry.delete(browserId);
+    }
+}
+
+function terminateBrowserProcess(browser, reason = 'cleanup') {
+    if (!browser) return;
+    const proc = typeof browser.process === 'function' ? browser.process() : null;
+    if (proc && !proc.killed) {
+        try {
+            proc.kill('SIGTERM');
+            setTimeout(() => {
+                if (!proc.killed) {
+                    try { proc.kill('SIGKILL'); } catch {}
+                }
+            }, 400).unref();
+            logScrapeEvent('warn', 'browser_process_terminated', { pid: proc.pid, reason });
+        } catch {}
+    }
+}
+
+async function closeBrowserSafely(browser, browserId = null) {
+    unregisterActiveBrowser(browserId);
+    if (!browser) return;
+    try {
+        await withTimeout(browser.close(), 3000, 'Browser close timeout', 500);
+    } catch {
+        terminateBrowserProcess(browser, 'close_timeout_or_error');
+    }
+}
+
+async function launchBrowserWithTimeout(launchOptions, timeoutMs = 10000, signal = null) {
+    throwIfAborted(signal);
+    let timedOut = false;
+
+    const launchPromise = puppeteer.launch(launchOptions).then((browser) => {
+        if (timedOut || (signal && signal.aborted)) {
+            closeBrowserSafely(browser);
+            const err = new Error('Brauzer başladılarkən vaxt limiti bitdi.');
+            err.statusCode = 504;
+            err.errorType = 'TIMEOUT_ERROR';
+            throw err;
+        }
+        return browser;
+    });
+
+    return withTimeout(
+        launchPromise,
+        timeoutMs,
+        'Chromium brauzerinin işə düşmə müddəti bitdi.',
+        504,
+        () => { timedOut = true; }
+    );
+}
+
+function acquireBrowserSlot(deadline = null) {
+    if (isShuttingDown) {
+        const err = new Error('Server yenidən başladılır. Zəhmət olmasa bir neçə saniyə sonra cəhd edin.');
+        err.statusCode = 503;
+        err.errorType = 'QUEUE_FULL';
+        return Promise.reject(err);
+    }
+
+    if (activeBrowsers < MAX_CONCURRENT_BROWSERS) {
+        activeBrowsers++;
+        return Promise.resolve();
+    }
+
+    if (browserQueue.length >= MAX_BROWSER_QUEUE_SIZE) {
+        const err = new Error('Server hazırda yüklüdür. Zəhmət olmasa bir neçə saniyə sonra yenidən cəhd edin.');
+        err.statusCode = 503;
+        err.errorType = 'QUEUE_FULL';
+        return Promise.reject(err);
+    }
+
+    const waitMs = deadline
+        ? Math.min(QUEUE_WAIT_TIMEOUT_MS, getRemainingTime(deadline, 500))
+        : QUEUE_WAIT_TIMEOUT_MS;
+
+    return new Promise((resolve, reject) => {
+        const entry = {
+            resolve: () => {
+                clearTimeout(timer);
+                resolve();
+            },
+            reject: (err) => {
+                clearTimeout(timer);
+                reject(err);
+            }
+        };
+
+        const timer = setTimeout(() => {
+            const idx = browserQueue.indexOf(entry);
+            if (idx !== -1) browserQueue.splice(idx, 1);
+            const err = new Error('Sorğu növbəsində gözləmə müddəti bitdi.');
+            err.statusCode = 503;
+            err.errorType = 'QUEUE_FULL';
+            reject(err);
+        }, waitMs);
+
+        browserQueue.push(entry);
+    });
+}
+
+function releaseBrowserSlot() {
+    if (browserQueue.length > 0) {
+        const nextEntry = browserQueue.shift();
+        nextEntry.resolve();
+    } else {
+        activeBrowsers = Math.max(0, activeBrowsers - 1);
+    }
+}
+
+// --------------------------------------------------------------------
 // 🌐 ƏSAS MƏQALƏ, HEAD VƏ METADATA ÇIXARIŞI (PUPPETEER)
 // --------------------------------------------------------------------
-async function scrapeUniversalWeb(targetUrl, plan = "basic") {
+async function executeScrapeSession(targetUrl, plan, signal = null, deadline = null) {
     let browser = null;
+    let browserId = null;
+
+    const onAbort = () => {
+        closeBrowserSafely(browser, browserId);
+    };
+
+    if (signal) {
+        throwIfAborted(signal);
+        signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     try {
-        browser = await puppeteer.launch({
-            args: [
-                ...chromium.args,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process',
-                '--no-zygote',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-infobars',
-                '--window-size=1920,1080',
-                '--start-maximized',
-                '--hide-scrollbars',
-                '--disable-web-security',
-                '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7',
-                `--user-agent=${USER_AGENT}`
-            ],
-            defaultViewport: { width: 1280, height: 800 },
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-            ignoreHTTPSErrors: true
-        });
+        const egressProxy = createEgressProxyConfig();
+        const launchArgs = [
+            ...chromium.args,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-infobars',
+            '--window-size=1280,800',
+            '--hide-scrollbars',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--metrics-recording-only',
+            '--no-first-run',
+            '--lang=az-AZ,az;q=0.9,en-US;q=0.8,en;q=0.7',
+            `--user-agent=${USER_AGENT}`
+        ];
+
+        if (egressProxy.enabled && egressProxy.browserArg) {
+            launchArgs.push(egressProxy.browserArg);
+        }
+
+        const launchBudget = deadline ? Math.min(10000, getRemainingTime(deadline, 1500)) : 10000;
+
+        browser = await launchBrowserWithTimeout(
+            {
+                args: launchArgs,
+                defaultViewport: { width: 1280, height: 800 },
+                executablePath: await chromium.executablePath(),
+                headless: chromium.headless,
+                ignoreHTTPSErrors: ALLOW_INSECURE_TLS
+            },
+            launchBudget,
+            signal
+        );
+
+        browserId = registerActiveBrowser(browser);
+        throwIfAborted(signal);
 
         const page = await browser.newPage();
+        if (egressProxy.enabled && egressProxy.username) {
+            await page.authenticate({
+                username: egressProxy.username,
+                password: egressProxy.password || ''
+            });
+        }
+
         await page.setUserAgent(USER_AGENT);
         await page.setExtraHTTPHeaders({
             'Accept-Language': 'az,tr,en-US,en;q=0.9',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
         });
 
-        // 🛡️ Render 512MB RAM mühafizəsi (CSS saxlanılır ki, saytlar 403 bot bloku verməsin)
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const resource = req.resourceType();
-            const reqUrl = req.url().toLowerCase();
-            const isAdUrl = ['ads2.imv.az', 'doubleclick', 'googlesyndication', '/banner', '/banners/', '/ads/', 'catfish'].some(k => reqUrl.includes(k));
-            if (isAdUrl || ['image', 'media', 'font'].includes(resource)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
+        await installRequestSecurityGuards(page, signal);
+        const networkVideoSet = collectVideoNetworkRequests(page);
+
+        const navTimeout = deadline ? Math.min(14000, getRemainingTime(deadline, 2000)) : 14000;
+        const navigationResponse = await page.goto(targetUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: navTimeout
         });
 
-        await page.goto(targetUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 15000
-        });
+        const httpStatus = navigationResponse ? navigationResponse.status() : 200;
+        throwIfAborted(signal);
 
         const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-        // Qısa ilkin gözləmə (JS və DOM-un oturması üçün)
-        const quickDelay = Math.floor(Math.random() * 500) + 700;
+        const quickDelay = Math.floor(Math.random() * 250) + 400;
         await delay(quickDelay);
+        throwIfAborted(signal);
 
-        // Cloudflare challenge düşübsə, yalnız o halda bir qədər də gözlə
-        const isChallenge = await page.evaluate(() => {
-            const t = (document.title || '').toLowerCase();
-            const b = (document.body?.innerText || '').toLowerCase();
-            return (
-                t.includes('just a moment') ||
-                t.includes('bir dakika lütfen') ||
-                t.includes('attention required') ||
-                b.includes('checking your browser') ||
-                b.includes('kötü niyetli botlara karşı')
-            );
-        });
+        const initialSnapshot = await page.evaluate(() => ({
+            title: document.title || '',
+            bodyText: (document.body?.innerText || '').slice(0, 1500)
+        }));
 
-        if (isChallenge) {
-            await delay(3500);
+        if (detectCloudflareChallenge(initialSnapshot.title, '', initialSnapshot.bodyText, httpStatus)) {
+            const cfWait = deadline ? Math.min(3500, Math.max(500, getRemainingTime(deadline, 1000) - 800)) : 3500;
+            await delay(cfWait);
+            throwIfAborted(signal);
         }
 
-        // Qısa scroll və mouse hərəkəti
         await page.evaluate(() => {
             window.scrollBy(0, Math.floor(Math.random() * 250) + 100);
             window.dispatchEvent(new MouseEvent('mousemove', {
@@ -376,9 +2048,15 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             }));
         });
 
-        await delay(300);
+        await delay(200);
+        throwIfAborted(signal);
 
-        const extracted = await page.evaluate((pageUrl) => {
+        const safetyCaps = getTechnicalSafetyLimits();
+
+        // ------------------------------------------------------------
+        // 🖥️ BROWSER CONTEXT DOM EXTRACTION (page.evaluate)
+        // ------------------------------------------------------------
+        const extracted = await page.evaluate((pageUrl, caps) => {
             const out = {
                 head: {
                     title: '',
@@ -390,28 +2068,56 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     keywords: '',
                     language: document.documentElement.lang || '',
                     charset: document.characterSet || 'UTF-8',
+                    published_time: '',
+                    modified_time: '',
+                    section: '',
+                    publisher: { name: '', logo: '' },
                     open_graph: {},
                     twitter: {},
                     all_meta: {},
-                    json_ld: [],
+                    json_ld: []
                 },
                 body: {
                     h1: '',
+                    bodyPreview: (document.body?.innerText || '').slice(0, 1500),
                     paragraphs: [],
                     images: [],
                     classifiedImages: [],
+                    jsonLdImages: [],
                     links: [],
-                    videoSources: [],
+                    videoSources: []
                 }
             };
 
+            function isSafeHttpHref(raw) {
+                if (!raw || typeof raw !== 'string') return '';
+                const trimmed = raw.replace(/\\/g, '/').trim();
+                if (!trimmed || /^(javascript:|data:|blob:|vbscript:|file:|mailto:|tel:|#)/i.test(trimmed)) {
+                    return '';
+                }
+                try {
+                    const u = new URL(trimmed, pageUrl);
+                    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+                    return u.href;
+                } catch {
+                    return '';
+                }
+            }
+
+            // 1. <title> və <meta> teqləri
             const titleEl = document.querySelector('title');
             if (titleEl && titleEl.innerText) {
                 out.head.title = titleEl.innerText.trim();
             }
 
             document.querySelectorAll('meta').forEach(meta => {
-                const name = (meta.getAttribute('name') || meta.getAttribute('property') || meta.getAttribute('http-equiv') || meta.getAttribute('itemprop') || '').trim();
+                const name = (
+                    meta.getAttribute('name') ||
+                    meta.getAttribute('property') ||
+                    meta.getAttribute('http-equiv') ||
+                    meta.getAttribute('itemprop') ||
+                    ''
+                ).trim();
                 const content = (meta.getAttribute('content') || meta.getAttribute('value') || '').trim();
 
                 if (!name || !content) return;
@@ -446,19 +2152,14 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             });
 
             const canonicalEl = document.querySelector('link[rel="canonical"]');
-            if (canonicalEl && canonicalEl.getAttribute('href')) {
-                out.head.canonical = canonicalEl.getAttribute('href');
-            } else if (out.head.open_graph.url) {
-                out.head.canonical = out.head.open_graph.url;
+            const rawCanonical = canonicalEl?.getAttribute('href') || out.head.open_graph.url || '';
+            if (rawCanonical) {
+                out.head.canonical = isSafeHttpHref(rawCanonical) || rawCanonical;
             }
 
             const iconEl = document.querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
             if (iconEl && iconEl.getAttribute('href')) {
-                try {
-                    out.head.favicon = new URL(iconEl.getAttribute('href'), pageUrl).href;
-                } catch {
-                    out.head.favicon = iconEl.getAttribute('href');
-                }
+                out.head.favicon = isSafeHttpHref(iconEl.getAttribute('href')) || iconEl.getAttribute('href');
             } else {
                 try {
                     const u = new URL(pageUrl);
@@ -466,18 +2167,321 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 } catch {}
             }
 
-            document.querySelectorAll('script[type="application/ld+json"]').forEach(script => {
-                try {
-                    const raw = script.innerText.trim();
-                    if (raw) {
-                        const parsed = JSON.parse(raw);
-                        out.head.json_ld.push(parsed);
-                        if (!out.head.title && parsed.headline) out.head.title = parsed.headline;
-                        if (!out.head.description && parsed.description) out.head.description = parsed.description;
-                    }
-                } catch {}
-            });
+            // 2. JSON-LD PRE-PARSE LİMİTLƏRİ VƏ REKURSİV EXTRACTION FUNKSİYALARI
+            function normalizeSchemaType(rawType) {
+                if (!rawType) return '';
+                return String(rawType)
+                    .replace(/^https?:\/\/(www\.)?schema\.org\//i, '')
+                    .trim();
+            }
 
+            function getTypes(node) {
+                if (!node || typeof node !== 'object') return [];
+                const rawType = node['@type'];
+                if (Array.isArray(rawType)) {
+                    return rawType.map(normalizeSchemaType).filter(Boolean);
+                }
+                const single = normalizeSchemaType(rawType);
+                return single ? [single] : [];
+            }
+
+            function extractJsonLdImageUrls(imgField) {
+                const urls = [];
+                if (!imgField) return urls;
+                const list = Array.isArray(imgField) ? imgField : [imgField];
+                for (const entry of list) {
+                    if (typeof entry === 'string') {
+                        urls.push(entry);
+                    } else if (entry && typeof entry === 'object') {
+                        if (entry.url) urls.push(entry.url);
+                        if (entry.contentUrl) urls.push(entry.contentUrl);
+                    }
+                }
+                return urls;
+            }
+
+            function collectJsonLdScripts(maxScripts, maxScriptBytes, maxTotalBytes) {
+                const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+                const rawList = [];
+                const encoder = new TextEncoder();
+                let totalBytes = 0;
+
+                for (const script of scripts) {
+                    if (rawList.length >= maxScripts) break;
+                    const raw = (script.textContent || script.innerText || '').trim();
+                    if (!raw) continue;
+                    const byteLen = encoder.encode(raw).length;
+                    if (byteLen > maxScriptBytes) continue;
+                    if (totalBytes + byteLen > maxTotalBytes) break;
+
+                    rawList.push(raw);
+                    totalBytes += byteLen;
+                }
+                return rawList;
+            }
+
+            function parseJsonLdSafely(rawText, maxScriptBytes) {
+                if (!rawText || typeof rawText !== 'string') return null;
+                const byteLen = new TextEncoder().encode(rawText).length;
+                if (byteLen > maxScriptBytes) return null;
+                try {
+                    return JSON.parse(rawText);
+                } catch {
+                    return null;
+                }
+            }
+
+            function flattenJsonLdNodes(root) {
+                const collected = [];
+                const visited = new Set();
+                const stack = [{ node: root, depth: 1 }];
+
+                while (stack.length > 0 && collected.length < caps.maxJsonLdNodes) {
+                    const { node: current, depth } = stack.pop();
+                    if (!current || typeof current !== 'object' || depth > caps.maxJsonLdDepth) continue;
+                    if (visited.has(current)) continue;
+                    visited.add(current);
+
+                    if (Array.isArray(current)) {
+                        for (let i = current.length - 1; i >= 0; i--) {
+                            stack.push({ node: current[i], depth: depth + 1 });
+                        }
+                        continue;
+                    }
+
+                    collected.push(current);
+
+                    const nestedKeys = ['@graph', 'mainEntity', 'itemListElement', 'publisher', 'author'];
+                    for (const key of nestedKeys) {
+                        const child = current[key];
+                        if (!child || typeof child !== 'object') continue;
+                        if (Array.isArray(child)) {
+                            for (let i = child.length - 1; i >= 0; i--) {
+                                stack.push({ node: child[i], depth: depth + 1 });
+                            }
+                        } else {
+                            stack.push({ node: child, depth: depth + 1 });
+                        }
+                    }
+                }
+                return collected;
+            }
+
+            function extractJsonLdImages(nodes) {
+                const articleImgs = [];
+                const logoImgs = [];
+
+                for (const node of nodes) {
+                    const types = getTypes(node);
+
+                    if (types.includes('Organization') || types.includes('NewsMediaOrganization')) {
+                        if (node.logo) {
+                            extractJsonLdImageUrls(node.logo).forEach(u => logoImgs.push(u));
+                        }
+                    }
+
+                    if (
+                        types.includes('NewsArticle') ||
+                        types.includes('Article') ||
+                        types.includes('BlogPosting') ||
+                        types.includes('ImageObject')
+                    ) {
+                        if (node.image) {
+                            extractJsonLdImageUrls(node.image).forEach(u => articleImgs.push(u));
+                        }
+                        if (types.includes('ImageObject')) {
+                            extractJsonLdImageUrls(node).forEach(u => articleImgs.push(u));
+                        }
+                    }
+
+                    if (types.includes('VideoObject') && node.thumbnailUrl) {
+                        extractJsonLdImageUrls(node.thumbnailUrl).forEach(u => articleImgs.push(u));
+                    }
+                }
+
+                return { articleImgs, logoImgs };
+            }
+
+            function extractJsonLdVideos(nodes) {
+                const videos = [];
+                for (const node of nodes) {
+                    const types = getTypes(node);
+                    if (types.includes('VideoObject')) {
+                        if (node.embedUrl) videos.push(node.embedUrl);
+                        if (node.contentUrl) videos.push(node.contentUrl);
+                    }
+                }
+                return videos;
+            }
+
+            function extractArticleDates(nodes, allMeta) {
+                let published = '';
+                let modified = '';
+
+                for (const node of nodes) {
+                    if (!published && (node.datePublished || node.dateCreated)) {
+                        published = String(node.datePublished || node.dateCreated).trim();
+                    }
+                    if (!modified && node.dateModified) {
+                        modified = String(node.dateModified).trim();
+                    }
+                }
+
+                const pubKeys = ['article:published_time', 'og:published_time', 'pubdate', 'date', 'dc.date'];
+                const modKeys = ['article:modified_time', 'og:updated_time', 'last-modified'];
+
+                for (const [k, v] of Object.entries(allMeta || {})) {
+                    const lk = k.toLowerCase();
+                    if (!published && pubKeys.includes(lk)) published = v;
+                    if (!modified && modKeys.includes(lk)) modified = v;
+                }
+
+                if (!published) {
+                    const timeEl = document.querySelector('article time[datetime], time[datetime]');
+                    if (timeEl) published = (timeEl.getAttribute('datetime') || '').trim();
+                }
+
+                return { published, modified };
+            }
+
+            function extractPublisher(nodes, allMeta, ogMeta) {
+                let name = '';
+                let logo = '';
+
+                for (const node of nodes) {
+                    const types = getTypes(node);
+                    if (types.includes('Organization') || types.includes('NewsMediaOrganization')) {
+                        if (!name && node.name) name = String(node.name).trim();
+                        if (!logo && node.logo) {
+                            const logos = extractJsonLdImageUrls(node.logo);
+                            if (logos[0]) logo = logos[0];
+                        }
+                    }
+                    if (node.publisher && typeof node.publisher === 'object') {
+                        if (!name && node.publisher.name) name = String(node.publisher.name).trim();
+                        if (!logo && node.publisher.logo) {
+                            const logos = extractJsonLdImageUrls(node.publisher.logo);
+                            if (logos[0]) logo = logos[0];
+                        }
+                    }
+                }
+
+                if (!name) {
+                    name = ogMeta.site_name || allMeta['publisher'] || '';
+                }
+
+                return { name, logo };
+            }
+
+            function extractArticleSection(nodes, allMeta) {
+                for (const node of nodes) {
+                    if (node.articleSection) {
+                        return Array.isArray(node.articleSection)
+                            ? String(node.articleSection[0] || '').trim()
+                            : String(node.articleSection).trim();
+                    }
+                    const types = getTypes(node);
+                    if (types.includes('BreadcrumbList') && Array.isArray(node.itemListElement) && node.itemListElement.length >= 2) {
+                        const secItem = node.itemListElement[1];
+                        const secName = secItem?.name || secItem?.item?.name;
+                        if (secName) return String(secName).trim();
+                    }
+                }
+
+                for (const [k, v] of Object.entries(allMeta || {})) {
+                    if (['article:section', 'section', 'category'].includes(k.toLowerCase())) {
+                        return v;
+                    }
+                }
+                return '';
+            }
+
+            function extractJsonLdMetadata(nodes) {
+                for (const node of nodes) {
+                    const types = getTypes(node);
+
+                    if (types.includes('WebSite') || types.includes('Organization') || types.includes('NewsMediaOrganization')) {
+                        if (!out.head.site_name && node.name) {
+                            out.head.site_name = String(node.name);
+                        }
+                    }
+
+                    if (types.includes('NewsArticle') || types.includes('Article') || types.includes('BlogPosting')) {
+                        if (!out.head.title && (node.headline || node.name)) {
+                            out.head.title = String(node.headline || node.name);
+                        }
+                        if (!out.head.description && node.description) {
+                            out.head.description = String(node.description);
+                        }
+                        if (!out.head.author && node.author) {
+                            if (typeof node.author === 'string') {
+                                out.head.author = node.author;
+                            } else if (Array.isArray(node.author) && node.author[0]?.name) {
+                                out.head.author = String(node.author[0].name);
+                            } else if (node.author?.name) {
+                                out.head.author = String(node.author.name);
+                            }
+                        }
+                        if (!out.head.site_name && node.publisher?.name) {
+                            out.head.site_name = String(node.publisher.name);
+                        }
+                    }
+
+                    if (types.includes('CollectionPage') || types.includes('ItemList')) {
+                        if (!out.head.title && node.name) {
+                            out.head.title = String(node.name);
+                        }
+                        if (!out.head.description && node.description) {
+                            out.head.description = String(node.description);
+                        }
+                    }
+                }
+            }
+
+            const jsonLdArticleImages = [];
+            const jsonLdLogoImages = [];
+            const jsonLdVideos = [];
+            const allCollectedNodes = [];
+            let hasCollectionSchema = false;
+
+            const rawJsonLdScripts = collectJsonLdScripts(
+                caps.maxJsonLdScripts,
+                caps.maxJsonLdScriptBytes,
+                caps.maxJsonLdBytes
+            );
+
+            for (const rawScript of rawJsonLdScripts) {
+                const parsed = parseJsonLdSafely(rawScript, caps.maxJsonLdScriptBytes);
+                if (!parsed) continue;
+
+                out.head.json_ld.push(parsed);
+                const nodes = flattenJsonLdNodes(parsed);
+                allCollectedNodes.push(...nodes);
+
+                extractJsonLdMetadata(nodes);
+
+                const imgs = extractJsonLdImages(nodes);
+                jsonLdArticleImages.push(...imgs.articleImgs);
+                jsonLdLogoImages.push(...imgs.logoImgs);
+                jsonLdVideos.push(...extractJsonLdVideos(nodes));
+
+                for (const node of nodes) {
+                    const types = getTypes(node);
+                    if (types.includes('CollectionPage') || types.includes('ItemList')) {
+                        hasCollectionSchema = true;
+                    }
+                }
+            }
+
+            const dates = extractArticleDates(allCollectedNodes, out.head.all_meta);
+            out.head.published_time = dates.published;
+            out.head.modified_time = dates.modified;
+            out.head.publisher = extractPublisher(allCollectedNodes, out.head.all_meta, out.head.open_graph);
+            out.head.section = extractArticleSection(allCollectedNodes, out.head.all_meta);
+
+            if (!out.head.site_name && out.head.publisher.name) {
+                out.head.site_name = out.head.publisher.name;
+            }
             if (!out.head.title) {
                 out.head.title = out.head.open_graph.title || out.head.twitter.title || '';
             }
@@ -486,68 +2490,152 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
             if (h1El) out.body.h1 = h1El.innerText.trim();
             if (!out.head.title && out.body.h1) out.head.title = out.body.h1;
 
-            const contentSelectors = [
-                '[itemprop="articleBody"]',
-                '.article-body',
-                '.article_body',
-                '.news-text',
-                '.news_text',
-                '.news-inner',
-                '.news-content',
-                '.post-content',
-                '.article-content',
-                '.entry-content',
-                '.single-content',
-                '.content-text',
-                'main',
-                '[role="main"]',
-                'article',
-            ];
+            // 3. ARTICLE CONTAINER SCORING, BOILERPLATE REMOVAL & PARAGRAPH EXTRACTION
+            function scoreContentCandidate(el) {
+                if (!el) return -1000;
+                const text = (el.innerText || '').trim();
+                const textLen = text.length;
+                if (textLen < 150) return -500;
 
-            let contentContainer = null;
-            let bestTextLength = 0;
+                const tag = (el.tagName || '').toLowerCase();
+                const clsAndId = `${el.className || ''} ${el.id || ''}`.toLowerCase();
+                const pCount = el.querySelectorAll('p').length;
+                const headingCount = el.querySelectorAll('h1, h2, h3').length;
 
-            for (const selector of contentSelectors) {
-                const elements = document.querySelectorAll(selector);
-                elements.forEach(el => {
-                    const txtLen = (el.innerText || '').trim().length;
-                    if (txtLen > bestTextLength && txtLen >= 150) {
-                        bestTextLength = txtLen;
-                        contentContainer = el;
-                    }
+                let linkTextLen = 0;
+                el.querySelectorAll('a').forEach(a => {
+                    linkTextLen += (a.innerText || '').trim().length;
                 });
-                if (contentContainer && bestTextLength >= 250 && !['main', '[role="main"]', 'article'].includes(selector)) {
-                    break;
+                const linkRatio = textLen > 0 ? (linkTextLen / textLen) : 0;
+
+                let score = Math.min(textLen, 12000) * 0.05;
+                score += pCount * 25;
+                score += headingCount * 10;
+
+                if (el.getAttribute('itemprop') === 'articleBody') score += 200;
+                if (/(article-body|article_body|news-text|news_text|post-content|entry-content|article-content)/i.test(clsAndId)) {
+                    score += 150;
                 }
+                if (tag === 'article') score += 80;
+                if (tag === 'body' || tag === 'main') score -= 120;
+
+                // Yüksək link sıxlığı menyu/siyahı blokunu göstərir
+                if (linkRatio > 0.65) score -= 180;
+                if (/(sidebar|related|footer|nav|menu|comment|widget)/i.test(clsAndId)) score -= 250;
+
+                return score;
             }
 
-            contentContainer = contentContainer || document.body;
+            function selectBestContentContainer() {
+                const contentSelectors = [
+                    '[itemprop="articleBody"]',
+                    '.article-body',
+                    '.article_body',
+                    '.news-text',
+                    '.news_text',
+                    '.news-inner',
+                    '.news-content',
+                    '.post-content',
+                    '.article-content',
+                    '.entry-content',
+                    '.single-content',
+                    '.content-text',
+                    'article',
+                    'main',
+                    '[role="main"]'
+                ];
 
-            if (contentContainer) {
-                const clone = contentContainer.cloneNode(true);
+                let bestContainer = null;
+                let bestScore = -Infinity;
 
+                for (const selector of contentSelectors) {
+                    document.querySelectorAll(selector).forEach(el => {
+                        const sc = scoreContentCandidate(el);
+                        if (sc > bestScore) {
+                            bestScore = sc;
+                            bestContainer = el;
+                        }
+                    });
+                }
+
+                return bestContainer || document.body;
+            }
+
+            function extractArticleContent() {
+                return selectBestContentContainer();
+            }
+
+            function isArticleListPage(container) {
+                if (hasCollectionSchema) return true;
+                try {
+                    const pathname = new URL(pageUrl).pathname.toLowerCase();
+                    if (/\/(son-xeberler|latest-news|news|xeberler|category|tag|archive|search)\/?$/.test(pathname)) {
+                        return true;
+                    }
+                } catch {}
+
+                const longNarrativeParas = Array.from(container.querySelectorAll('p'))
+                    .filter(p => (p.innerText || '').trim().length >= 140);
+                const newsLinks = container.querySelectorAll(
+                    'a[href*="/xeber/"], a[href*="/news/"], a[href*="/article/"], .news-item a[href], .article-item a[href]'
+                );
+
+                return longNarrativeParas.length < 2 && newsLinks.length >= 6;
+            }
+
+            function deduplicateContent(lines) {
+                const seen = new Set();
+                const unique = [];
+                for (const item of lines) {
+                    const normalizedKey = item.toLowerCase().replace(/\s+/g, ' ').trim();
+                    if (!normalizedKey || seen.has(normalizedKey)) continue;
+                    seen.add(normalizedKey);
+                    unique.push(item);
+                }
+                return unique;
+            }
+
+            function removeBoilerplate(clone) {
                 const removeSelectors = [
                     'script', 'style', 'noscript', 'iframe', 'svg',
                     'nav', 'header', 'footer', 'form', 'aside',
                     '.sidebar', '.related-news', '.widgets', '.banner', '.ads',
-                    '.advertisement', '.social-share', '.tags', '.author-box',
+                    '.advertisement', '.social-share', '.tags', '.tag-list', '.author-box',
                     '.read-more', '.other-news', '.news-box', 'figure',
                     '[class*="related"]', '[class*="share"]', '[class*="social"]',
                     '[class*="banner"]', '[class*="advert"]', '[class*="trend"]',
-                    '.poll', '.polls', '.pagination'
+                    '.poll', '.polls', '.pagination', '.breadcrumb', '.breadcrumbs'
                 ];
                 clone.querySelectorAll(removeSelectors.join(', ')).forEach(el => el.remove());
 
-                const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
-                const seenTexts = new Set();
+                // Bitişik teqlərin sözlərinin bir-birinə yapışmasının qarşısını al
+                clone.querySelectorAll('a, span, td, th, li, h1, h2, h3, h4, p').forEach(el => {
+                    const next = el.nextSibling;
+                    if (next && next.nodeType === 1) {
+                        const isBlockOrLink = /^(A|SPAN|DIV|P|LI|H[1-6]|TD|TH|BUTTON)$/.test(next.tagName);
+                        if (isBlockOrLink) {
+                            const sep = (el.tagName === 'A' && next.tagName === 'A') ? '\n' : ' ';
+                            el.parentNode.insertBefore(document.createTextNode(sep), next);
+                        }
+                    }
+                });
+            }
 
-                function pushCleanText(rawValue, minLength = 25) {
-                    const txt = (rawValue || '').replace(/\s+/g, ' ').trim();
-                    if (!txt || txt.length < minLength) return;
+            const seenTexts = new Set();
 
-                    if (/<[a-z][\s\S]*>/i.test(txt)) return;
-                    if (/^\d+$/.test(txt)) return;
-                    if (/^(keçid|daha ətraflı|read more|login|ilk|son)$/i.test(txt)) return;
+            function pushCleanText(rawValue, minLength = 25) {
+                if (out.body.paragraphs.length >= caps.maxParagraphs) return;
+
+                const lines = String(rawValue || '').split(/\n+/);
+                for (const line of lines) {
+                    if (out.body.paragraphs.length >= caps.maxParagraphs) break;
+
+                    const txt = line.replace(/\s+/g, ' ').trim();
+                    if (!txt || txt.length < minLength) continue;
+
+                    if (/<[a-z][\s\S]*>/i.test(txt)) continue;
+                    if (/^\d+$/.test(txt)) continue;
+                    if (/^(keçid|daha ətraflı|daha çox|read more|login|ilk|son|ana səhifə|bütün xəbərlər)$/i.test(txt)) continue;
 
                     const upperTxt = txt.toUpperCase();
                     const lowerTxt = txt.toLowerCase();
@@ -559,20 +2647,41 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                         lowerTxt.includes('qeydiyyatdan keçin') ||
                         lowerTxt.includes('t.me/') ||
                         lowerTxt.includes('instagram.com') ||
-                        lowerTxt.includes('bizi') ||
-                        lowerTxt.includes('izləyin');
+                        lowerTxt.includes('bizi izləyin') ||
+                        lowerTxt.includes('kanalımıza abunə olun');
 
-                    if (isJunk || seenTexts.has(txt)) return;
+                    if (isJunk || seenTexts.has(txt)) continue;
 
                     seenTexts.add(txt);
                     out.body.paragraphs.push(txt);
                 }
+            }
 
-                // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini topla
-                clone.querySelectorAll('h1, h2, h3, p, li, blockquote').forEach(node => {
+            function extractParagraphs(container) {
+                if (!container) return;
+
+                const listPage = isArticleListPage(container);
+                const clone = container.cloneNode(true);
+                removeBoilerplate(clone);
+
+                const excludedSelector = 'header, nav, footer, aside, [role="navigation"], [aria-hidden="true"]';
+
+                // 1. Başlıqları, abzasları, sitatları və siyahı elementlərini çıxar
+                clone.querySelectorAll('h1, h2, h3, h4, p, li, blockquote').forEach(node => {
                     if (node.closest(excludedSelector)) return;
-                    const isHeading = /^H[1-3]$/.test(node.tagName);
-                    pushCleanText(node.innerText, isHeading ? 8 : 30);
+                    const isHeading = /^H[1-4]$/.test(node.tagName);
+
+                    const childLinks = Array.from(node.querySelectorAll('a[href]')).filter(a => a.innerText.trim().length >= 8);
+                    const totalTextLen = (node.innerText || '').trim().length;
+                    const linksTextLen = childLinks.reduce((sum, a) => sum + a.innerText.trim().length, 0);
+                    const nonLinkTextLen = Math.max(0, totalTextLen - linksTextLen);
+
+                    if (childLinks.length >= 2 && nonLinkTextLen < 25) {
+                        childLinks.forEach(a => pushCleanText(a.innerText, 8));
+                        return;
+                    }
+
+                    pushCleanText(node.innerText, isHeading ? 8 : 28);
                 });
 
                 // 2. Əgər mətn <p> əvəzinə <br> / <div> ilə bölünübsə
@@ -583,11 +2692,11 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     const tempDiv = document.createElement('div');
                     tempDiv.innerHTML = htmlChunks;
                     const lines = (tempDiv.innerText || tempDiv.textContent || '').split('\n');
-                    lines.forEach(line => pushCleanText(line, 30));
+                    lines.forEach(line => pushCleanText(line, 28));
                 }
 
-                // 3. Yalnız abzas tapılmadıqda keçid başlıqlarını topla
-                if (out.body.paragraphs.length === 0) {
+                // 3. Xəbər siyahısı səhifələrində və ya abzas tapılmadıqda başlıq keçidlərini topla
+                if (out.body.paragraphs.length === 0 || (listPage && out.body.paragraphs.length < 3)) {
                     const headlineSelectors = [
                         'a[href*="/xeber/"]',
                         'a[href*="/news/detail/"]',
@@ -608,12 +2717,18 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                         pushCleanText(link.innerText, 8);
                     });
                 }
+
+                out.body.paragraphs = deduplicateContent(out.body.paragraphs);
             }
+
+            const contentContainer = extractArticleContent();
+            extractParagraphs(contentContainer);
 
             if (!out.head.description && out.body.paragraphs.length > 0) {
                 out.head.description = out.body.paragraphs[0];
             }
 
+            // 4. IMAGE EXTRACTION & CLASSIFICATION FUNKSİYALARI
             const seenImages = new Set();
 
             const adSelector = [
@@ -629,24 +2744,68 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 '.other-news', '.read-more', '.widgets'
             ].join(',');
 
-            const isSystemJunkUrl = (urlStr) => {
+            function isPlaceholderImage(urlStr) {
                 const lower = (urlStr || '').toLowerCase();
                 return [
-                    'tracker', 'pixel', 'placeholder', 'no+thumbnail', 'thunk_600',
-                    'nophoto', 'no-photo', 'no_photo', 'default-image', 'default_image',
-                    'blank.gif', 'atrk.gif', 'facebook.com/tr',
-                    'vote_b.gif', 'dloader.gif', 'loader.gif', 'spinner'
+                    'nophoto', 'no-photo', 'no_photo', 'placeholder', 'no+thumbnail',
+                    'thunk_600', 'default-image', 'default_image', 'blank.gif',
+                    'atrk.gif', '1x1.', 'spacer.gif', 'pixel.gif'
                 ].some(k => lower.includes(k));
-            };
+            }
 
-            const classifyImage = (absUrl, imgEl = null, source = 'dom') => {
+            function isSystemJunkUrl(urlStr) {
+                const lower = (urlStr || '').toLowerCase();
+                return (
+                    isPlaceholderImage(lower) ||
+                    ['tracker', 'pixel', 'facebook.com/tr', 'vote_b.gif', 'dloader.gif', 'loader.gif', 'spinner']
+                        .some(k => lower.includes(k))
+                );
+            }
+
+            function normalizeImageUrl(rawUrl) {
+                const abs = isSafeHttpHref(rawUrl);
+                if (!abs) return '';
+                try {
+                    const u = new URL(abs);
+                    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid']
+                        .forEach(p => u.searchParams.delete(p));
+                    return u.href;
+                } catch {
+                    return abs;
+                }
+            }
+
+            function getImageCandidatesFromSrcset(srcset) {
+                if (!srcset || typeof srcset !== 'string') return [];
+                const parsed = srcset
+                    .split(',')
+                    .map(entry => {
+                        const parts = entry.trim().split(/\s+/);
+                        const url = parts[0] || '';
+                        const descriptor = parts[1] || '';
+                        let weight = 0;
+                        if (descriptor.endsWith('w')) {
+                            weight = parseInt(descriptor, 10) || 0;
+                        } else if (descriptor.endsWith('x')) {
+                            weight = Math.round((parseFloat(descriptor) || 1) * 1000);
+                        }
+                        return { url, weight };
+                    })
+                    .filter(item => item.url && !item.url.startsWith('data:image/'));
+
+                parsed.sort((a, b) => b.weight - a.weight);
+                return parsed.map(item => item.url);
+            }
+
+            function classifyImage(absUrl, imgEl = null, source = 'dom') {
+                if (source === 'json_ld_logo') return 'logo';
+
                 const lowerUrl = absUrl.toLowerCase();
                 const altText = (imgEl?.getAttribute('alt') || '').toLowerCase();
                 const clsAndId = `${imgEl?.className || ''} ${imgEl?.id || ''}`.toLowerCase();
                 const w = parseInt(imgEl?.getAttribute('width'), 10);
                 const h = parseInt(imgEl?.getAttribute('height'), 10);
 
-                // 1. ADVERTISEMENT (Reklam)
                 const adUrlKeywords = [
                     '/adv/', '/ads/', '/ad/', 'banner', 'banners', 'sponsor', 'reklam',
                     'doubleclick', 'googlesyndication', 'adfox', 'ads2.imv.az', 'catfish', 'promo'
@@ -658,21 +2817,20 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 if (!isNaN(w) && !isNaN(h) && adDimensions.includes(`${w}x${h}`)) return 'advertisement';
 
                 const parentLink = imgEl?.closest?.('a[href]');
-                if (parentLink) {
+                if (parentLink && source !== 'article_body') {
                     try {
                         const linkHref = parentLink.getAttribute('href') || '';
                         const linkUrl = new URL(linkHref, pageUrl);
                         const pageHost = new URL(pageUrl).hostname.replace(/^www\./, '');
                         const linkHost = linkUrl.hostname.replace(/^www\./, '');
                         const isAdRedirect = /(utm_source|utm_campaign|aff_id|click_id|reklam|banner|redirect)/i.test(linkUrl.href);
-                        const isExternalSponsor = linkHost && linkHost !== pageHost && !/(cdn|static|media|img|storage)/i.test(linkHost);
+                        const isExternalSponsor = linkHost && linkHost !== pageHost && !/(cdn|static|media|img|storage|images)/i.test(linkHost);
                         if (isAdRedirect || isExternalSponsor) {
                             return 'advertisement';
                         }
                     } catch {}
                 }
 
-                // 2. ICON (İkon)
                 const iconKeywords = [
                     'favicon', 'sprite', '/icon', 'icons/', '.ico', 'social2/', '/social/',
                     'share', 'emoji', 'whatsapp', 'telegram', 'facebook', 'instagram', 'twitter', 'youtube'
@@ -680,7 +2838,6 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 if (iconKeywords.some(k => lowerUrl.includes(k) || clsAndId.includes(k))) return 'icon';
                 if ((!isNaN(w) && w > 0 && w <= 48) || (!isNaN(h) && h > 0 && h <= 48)) return 'icon';
 
-                // 3. LOGO
                 const logoKeywords = ['logo', 'brand', 'watermark', 'emblem', 'site-logo'];
                 if (logoKeywords.some(k => lowerUrl.includes(k) || altText.includes(k) || clsAndId.includes(k))) {
                     return 'logo';
@@ -689,38 +2846,35 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     return 'logo';
                 }
 
-                // 4. Yan bloklardakı ("oxşar xəbərlər", "sidebar") şəkilləri məqalədən ayır
                 if (imgEl && imgEl.closest?.(nonArticleZoneSelector) && source !== 'og_meta') {
                     return 'advertisement';
                 }
 
                 return 'article';
-            };
+            }
 
-            const registerImage = (rawUrl, imgEl = null, source = 'dom') => {
-                if (!rawUrl || rawUrl.startsWith('data:image/')) return;
-                try {
-                    const abs = new URL(rawUrl, pageUrl).href;
-                    if (isSystemJunkUrl(abs) || seenImages.has(abs)) return;
+            function registerImage(rawUrl, imgEl = null, source = 'dom') {
+                if (out.body.classifiedImages.length >= caps.maxImages) return;
+                const abs = normalizeImageUrl(rawUrl);
+                if (!abs || isSystemJunkUrl(abs) || seenImages.has(abs)) return;
 
-                    seenImages.add(abs);
-                    const imageType = classifyImage(abs, imgEl, source);
-                    const alt = (imgEl?.getAttribute('alt') || '').trim() || null;
+                seenImages.add(abs);
+                const imageType = classifyImage(abs, imgEl, source);
+                const alt = (imgEl?.getAttribute('alt') || '').trim() || null;
 
-                    out.body.classifiedImages.push({
-                        url: abs,
-                        image_type: imageType,
-                        alt,
-                        source
-                    });
+                out.body.classifiedImages.push({
+                    url: abs,
+                    image_type: imageType,
+                    alt,
+                    source
+                });
 
-                    if (imageType === 'article') {
-                        out.body.images.push(abs);
-                    }
-                } catch {}
-            };
+                if (imageType === 'article') {
+                    out.body.images.push(abs);
+                }
+            }
 
-            const extractImgSrc = (imgEl) => {
+            function extractImgSrc(imgEl) {
                 const attrs = ['src', 'data-src', 'data-lazy-src', 'data-original', 'data-ll-src', 'data-image', 'data-url'];
                 for (const attr of attrs) {
                     const val = imgEl.getAttribute(attr);
@@ -728,21 +2882,25 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 }
 
                 const srcset = imgEl.getAttribute('srcset') || imgEl.getAttribute('data-srcset');
-                if (srcset) {
-                    const firstCandidate = srcset.split(',')[0]?.trim().split(/\s+/)[0];
-                    if (firstCandidate && !firstCandidate.startsWith('data:image/')) return firstCandidate;
+                const candidates = getImageCandidatesFromSrcset(srcset);
+                if (candidates.length > 0) return candidates[0];
+
+                const picture = imgEl.closest('picture');
+                if (picture) {
+                    const sourceEl = picture.querySelector('source[srcset], source[data-srcset]');
+                    const picSrcset = sourceEl?.getAttribute('srcset') || sourceEl?.getAttribute('data-srcset');
+                    const picCandidates = getImageCandidatesFromSrcset(picSrcset);
+                    if (picCandidates.length > 0) return picCandidates[0];
                 }
 
                 return '';
-            };
+            }
 
-            // 1. Əsas OG / Twitter şəkli
             const ogImg = out.head.open_graph.image || out.head.twitter.image;
             if (ogImg) {
                 registerImage(ogImg, null, 'og_meta');
             }
 
-            // 2. Məqalə konteynerindəki şəkillər
             const isDedicatedArticleContainer = contentContainer && contentContainer !== document.body;
             if (isDedicatedArticleContainer) {
                 contentContainer.querySelectorAll('img').forEach(imgEl => {
@@ -751,50 +2909,31 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 });
             }
 
-            // 3. Səhifənin qalan hissəsindəki şəkillər (reklam, loqo, ikon təsnifatı və lent səhifələri üçün)
             document.body.querySelectorAll('img').forEach(imgEl => {
                 const src = extractImgSrc(imgEl);
                 if (src) registerImage(src, imgEl, isDedicatedArticleContainer ? 'page_other' : 'dom');
             });
 
-            // 4. JSON-LD NewsArticle şəkilləri
-            if (Array.isArray(out.head.json_ld)) {
-                for (const ld of out.head.json_ld) {
-                    if (ld && ld['@type'] === 'NewsArticle' && ld.image) {
-                        const imgs = Array.isArray(ld.image) ? ld.image : [ld.image];
-                        imgs.forEach(u => registerImage(typeof u === 'string' ? u : u?.url, null, 'json_ld'));
-                    }
-                }
-            }
+            jsonLdArticleImages.forEach(u => {
+                const abs = normalizeImageUrl(u);
+                if (abs) out.body.jsonLdImages.push(abs);
+                registerImage(u, null, 'json_ld');
+            });
+            jsonLdLogoImages.forEach(u => registerImage(u, null, 'json_ld_logo'));
 
+            // 5. LINKS EXTRACTION
             const seenLinks = new Set();
-            document.querySelectorAll('a').forEach(a => {
-                const href = a.getAttribute('href');
+            document.querySelectorAll('a[href]').forEach(a => {
+                if (out.body.links.length >= caps.maxLinks) return;
+                const abs = isSafeHttpHref(a.getAttribute('href'));
+                if (!abs || seenLinks.has(abs)) return;
+                seenLinks.add(abs);
                 const text = a.innerText.replace(/\s+/g, ' ').trim();
-                if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-                try {
-                    const abs = new URL(href, pageUrl).href;
-                    if (!seenLinks.has(abs)) {
-                        seenLinks.add(abs);
-                        out.body.links.push({ text: text || 'Keçid', url: abs });
-                    }
-                } catch {}
+                out.body.links.push({ text: text || 'Keçid', url: abs });
             });
 
-            const toAbsoluteVideoUrl = (rawSrc) => {
-                if (!rawSrc || typeof rawSrc !== 'string') return null;
-                const trimmed = rawSrc.trim();
-                if (!trimmed || trimmed.startsWith('blob:') || trimmed.startsWith('javascript:')) {
-                    return null;
-                }
-                try {
-                    return new URL(trimmed, pageUrl).href;
-                } catch {
-                    return trimmed;
-                }
-            };
-
-            const isAdVideoUrl = (urlStr) => {
+            // 6. VIDEO EXTRACTION FUNKSİYALARI
+            function isAdVideoUrl(urlStr) {
                 if (!urlStr) return true;
                 const lower = urlStr.toLowerCase();
                 return [
@@ -802,9 +2941,9 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     '/banner', '/banners/', '/ads/', '/vast', '/preroll',
                     '/midroll', '/postroll', 'catfish'
                 ].some((pattern) => lower.includes(pattern));
-            };
+            }
 
-            const isAdElement = (el) => {
+            function isAdElement(el) {
                 if (!el || typeof el.closest !== 'function') return false;
                 return Boolean(el.closest([
                     '[class*="banner"]', '[id*="banner"]',
@@ -812,200 +2951,246 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                     '[class*="sponsor"]', '[id*="sponsor"]',
                     '.ads', '.ad-box', '.ad-wrapper', '.video-ad', 'ins.adsbygoogle'
                 ].join(',')));
-            };
+            }
 
-            const pushUniqueVideo = (rawSrc, sourceEl = null) => {
+            function validateVideoSource(rawSrc) {
+                if (!rawSrc || typeof rawSrc !== 'string') return '';
+                const trimmed = rawSrc.trim();
+                if (!trimmed || /^(blob:|javascript:|data:|vbscript:|file:)/i.test(trimmed)) return '';
+                const fullUrl = isSafeHttpHref(trimmed);
+                if (!fullUrl || isAdVideoUrl(fullUrl)) return '';
+                return fullUrl;
+            }
+
+            function pushUniqueVideo(rawSrc, sourceEl = null) {
+                if (out.body.videoSources.length >= caps.maxVideos) return;
                 if (sourceEl && isAdElement(sourceEl)) return;
-                const fullUrl = toAbsoluteVideoUrl(rawSrc);
-                if (!fullUrl || isAdVideoUrl(fullUrl)) return;
+                const fullUrl = validateVideoSource(rawSrc);
+                if (!fullUrl) return;
                 if (!out.body.videoSources.includes(fullUrl)) {
                     out.body.videoSources.push(fullUrl);
                 }
-            };
+            }
 
-            const unwantedIframes = [
-                'ct.pinterest.com', 'doubleclick', 'analytics',
-                'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'
-            ];
+            function extractVideoSources() {
+                const unwantedIframes = [
+                    'ct.pinterest.com', 'doubleclick', 'analytics',
+                    'facebook.com/tr', 'clarity.ms', 'unidestin', 'metrix.az'
+                ];
 
-            document.querySelectorAll('iframe').forEach(iframe => {
-                const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
-                const lowerSrc = src.toLowerCase();
-                if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
-                    if (
-                        lowerSrc.includes('youtube') ||
-                        lowerSrc.includes('vimeo') ||
-                        lowerSrc.includes('embed') ||
-                        lowerSrc.includes('.m3u8') ||
-                        lowerSrc.includes('.mp4') ||
-                        lowerSrc.includes('.mpd') ||
-                        lowerSrc.includes('baku.tv')
-                    ) {
-                        pushUniqueVideo(src, iframe);
-                    }
-                }
-            });
-
-            document.querySelectorAll('video, video source').forEach(v => {
-                const src = v.getAttribute('src') || v.getAttribute('data-src');
-                pushUniqueVideo(src, v);
-            });
-
-            // ==========================================
-            // 🌟 GİZLİ VİDEO VƏ AXIN (STREAM) AXTARIŞI
-            // ==========================================
-
-            // 1. OpenGraph / Twitter Player teqlərindən video yoxla
-            const ogVideo =
-                out.head.open_graph.video ||
-                out.head.open_graph['video:url'] ||
-                out.head.open_graph['video:secure_url'] ||
-                out.head.twitter.player;
-            pushUniqueVideo(ogVideo);
-
-            // 2. JSON-LD (VideoObject) daxilindən video yoxla
-            out.head.json_ld.forEach(item => {
-                if (item && item['@type'] === 'VideoObject') {
-                    pushUniqueVideo(item.embedUrl || item.contentUrl);
-                }
-            });
-
-            // 3. Pleyerlərin gizli data atributlarında .m3u8 / .mpd / .mp4 axınlarını yoxla
-            document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
-                const src =
-                    el.getAttribute('data-src') ||
-                    el.getAttribute('data-url') ||
-                    el.getAttribute('data-stream') ||
-                    el.getAttribute('data-hls');
-                if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
-                    pushUniqueVideo(src, el);
-                }
-            });
-
-            // 4. Əgər hələ də tapılmadısa, script teqlərindən stream linkini regex ilə çək
-            if (out.body.videoSources.length === 0) {
-                document.querySelectorAll('script').forEach(script => {
-                    const text = script.innerText || '';
-                    const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd|mp4)(?:\?[^"'\s]*)?/i);
-                    if (match && match[0]) {
-                        pushUniqueVideo(match[0]);
+                document.querySelectorAll('iframe').forEach(iframe => {
+                    const src = iframe.getAttribute('src') || iframe.getAttribute('data-src') || '';
+                    const lowerSrc = src.toLowerCase();
+                    if (src && !unwantedIframes.some(u => lowerSrc.includes(u))) {
+                        if (
+                            lowerSrc.includes('youtube') ||
+                            lowerSrc.includes('vimeo') ||
+                            lowerSrc.includes('embed') ||
+                            lowerSrc.includes('.m3u8') ||
+                            lowerSrc.includes('.mp4') ||
+                            lowerSrc.includes('.mpd') ||
+                            lowerSrc.includes('baku.tv')
+                        ) {
+                            pushUniqueVideo(src, iframe);
+                        }
                     }
                 });
+
+                document.querySelectorAll('video, video source').forEach(v => {
+                    const src = v.getAttribute('src') || v.getAttribute('data-src');
+                    pushUniqueVideo(src, v);
+                });
+
+                const ogVideo =
+                    out.head.open_graph.video ||
+                    out.head.open_graph['video:url'] ||
+                    out.head.open_graph['video:secure_url'] ||
+                    out.head.twitter.player;
+                pushUniqueVideo(ogVideo);
+
+                jsonLdVideos.forEach(vUrl => pushUniqueVideo(vUrl));
+
+                document.querySelectorAll('[data-src], [data-url], [data-stream], [data-hls]').forEach(el => {
+                    const src =
+                        el.getAttribute('data-src') ||
+                        el.getAttribute('data-url') ||
+                        el.getAttribute('data-stream') ||
+                        el.getAttribute('data-hls');
+                    if (src && /\.(m3u8|mpd|mp4)(\?|$)/i.test(src)) {
+                        pushUniqueVideo(src, el);
+                    }
+                });
+
+                if (out.body.videoSources.length === 0) {
+                    document.querySelectorAll('script').forEach(script => {
+                        const text = script.innerText || '';
+                        const match = text.match(/https?:\/\/[^"'\s]+\.(m3u8|mpd|mp4)(?:\?[^"'\s]*)?/i);
+                        if (match && match[0]) {
+                            pushUniqueVideo(match[0]);
+                        }
+                    });
+                }
             }
-            // ==========================================
+
+            extractVideoSources();
 
             return out;
-        }, targetUrl);
+        }, targetUrl, safetyCaps);
 
-        await browser.close();
+        await closeBrowserSafely(browser, browserId);
         browser = null;
 
         const pageTitle = extracted.head.title || '';
         const pageDesc = extracted.head.description || '';
+        const bodyPreview = extracted.body.bodyPreview || '';
 
-        if (
-            pageTitle.includes("Bir dakika lütfen") ||
-            pageTitle.includes("Attention Required") ||
-            pageDesc.includes("kötü niyetli botlara karşı") ||
-            pageTitle.includes("Access Denied")
-        ) {
-            return {
-                success: false,
-                code: 403,
-                status: "error",
-                error: "Target website is protected by Cloudflare or bot verification. Access blocked.",
-                name: pageTitle,
-                description: pageDesc,
-                site_name: new URL(targetUrl).hostname,
-                is_video: false
-            };
+        if (detectCloudflareChallenge(pageTitle, pageDesc, bodyPreview, httpStatus)) {
+            return createApiErrorResponse(
+                403,
+                'Target website is protected by Cloudflare or bot verification. Access blocked.',
+                {
+                    name: cleanText(pageTitle),
+                    description: cleanText(pageDesc),
+                    site_name: new URL(targetUrl).hostname,
+                    is_video: false
+                }
+            );
         }
 
-        const limits = {
-            para: PLAN_CONTENT_LIMITS.paragraphLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.paragraphLimit[plan] : 10,
-            img: PLAN_CONTENT_LIMITS.imageLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.imageLimit[plan] : 10,
-            link: PLAN_CONTENT_LIMITS.linkLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.linkLimit[plan] : 10,
-            textLen: PLAN_CONTENT_LIMITS.contentLimit[plan] !== undefined ? PLAN_CONTENT_LIMITS.contentLimit[plan] : 1000
-        };
+        if (detectAccessDenied(pageTitle, pageDesc, bodyPreview, httpStatus)) {
+            return createApiErrorResponse(
+                403,
+                'Target website denied access (403 Forbidden / WAF block).',
+                {
+                    name: cleanText(pageTitle),
+                    description: cleanText(pageDesc),
+                    site_name: new URL(targetUrl).hostname,
+                    is_video: false
+                }
+            );
+        }
 
-        // 1. Əvvəlcə abzas limitini tətbiq et
+        if (httpStatus === 404) {
+            return createApiErrorResponse(404, 'Target webpage was not found (404).', {
+                name: cleanText(pageTitle),
+                description: cleanText(pageDesc),
+                site_name: new URL(targetUrl).hostname,
+                is_video: false
+            });
+        }
+
+        if (httpStatus === 429) {
+            return createApiErrorResponse(429, 'Target website rate-limited the request (429 Too Many Requests).', {
+                name: cleanText(pageTitle),
+                description: cleanText(pageDesc),
+                site_name: new URL(targetUrl).hostname,
+                is_video: false
+            });
+        }
+
+        const limits = getPlanLimits(plan);
+
         let finalParagraphs = limits.para === null
             ? extracted.body.paragraphs
             : extracted.body.paragraphs.slice(0, limits.para);
 
-        // 2. Mətn yarat
         let fullText = finalParagraphs.join('\n\n');
 
-        // 3. Simvol limitini tətbiq et
-        if (limits.textLen !== null && fullText.length > limits.textLen) {
-            fullText = fullText.substring(0, limits.textLen).trimEnd() + '...';
+        const effectiveMaxChars = limits.textLen !== null
+            ? Math.min(limits.textLen, safetyCaps.maxTextChars)
+            : safetyCaps.maxTextChars;
+
+        if (fullText.length > effectiveMaxChars) {
+            fullText = fullText.substring(0, effectiveMaxChars).trimEnd() + '...';
         }
 
-        // 4. Abzasları pageContent ilə eyniləşdir
-        finalParagraphs = fullText
-            ? fullText.split('\n\n')
-            : [];
+        finalParagraphs = fullText ? fullText.split('\n\n') : [];
 
-        const rawImages = extracted.body.images || [];
+        // Plan limitləri məqalə şəkillərinə tətbiq edilir; classified_images isə uyğunlaşdırılır
+        const rawArticleImages = extracted.body.images || [];
         const rawClassified = extracted.body.classifiedImages || [];
 
-        const finalImages = limits.img === null ? rawImages : rawImages.slice(0, limits.img);
-        const finalClassifiedImages = limits.img === null ? rawClassified : rawClassified.slice(0, limits.img);
-        const finalLinks = limits.link === null ? extracted.body.links : extracted.body.links.slice(0, limits.link);
+        const finalImages = limits.img === null
+            ? rawArticleImages
+            : rawArticleImages.slice(0, limits.img);
 
-        // OG şəkli nophoto, placeholder, thunk_600 və ya reklam banneridirsə, real məqalə şəklini (finalImages[0]) götürür
-        const rawOgThumb = extracted.head.open_graph.image || extracted.head.twitter.image || '';
-        const isBadThumb = /nophoto|no-photo|no_photo|placeholder|no\+thumbnail|thunk_600|banner|\/ads\/|\/adv\//i.test(rawOgThumb);
-        const thumbnail = (!isBadThumb && rawOgThumb)
-            ? rawOgThumb
-            : (finalImages.length > 0 ? finalImages[0] : (rawOgThumb || null));
+        const allowedArticleSet = new Set(finalImages);
+        const nonArticleClassified = rawClassified.filter(item => item.image_type !== 'article');
+        const keptArticleClassified = rawClassified.filter(
+            item => item.image_type === 'article' && allowedArticleSet.has(item.url)
+        );
+        const finalClassifiedImages = limits.img === null
+            ? rawClassified
+            : [...keptArticleClassified, ...nonArticleClassified.slice(0, limits.img)];
 
-        const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || "Səhifə Başlığı Yoxdur");
-        const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : "Təsvir tapılmadı"));
-        const finalSiteName = extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname;
+        const finalLinks = limits.link === null
+            ? extracted.body.links
+            : extracted.body.links.slice(0, limits.link);
 
-        const finalCanonical = (extracted.head.canonical && extracted.head.canonical !== 'undefined')
-            ? extracted.head.canonical
-            : targetUrl;
+        // DOM video mənbələri ilə şəbəkə cavablarında aşkarlanan videoları birləşdir
+        const mergedVideoSet = new Set([
+            ...(extracted.body.videoSources || []),
+            ...Array.from(networkVideoSet)
+        ]);
+        const safeVideoSources = Array.from(mergedVideoSet)
+            .map(validateVideoSource)
+            .filter(Boolean)
+            .slice(0, safetyCaps.maxVideos);
 
-        const hasVideo = extracted.body.videoSources.length > 0;
-        const videoEmbeds = buildVideoEmbeds(extracted.body.videoSources, 10);
-        let embedHtml = '';
-        if (hasVideo) {
-            embedHtml = videoEmbeds.combinedHtml;
-        } else {
-            embedHtml = generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
-        }
+        const thumbnail = selectBestThumbnail(
+            extracted.head.open_graph.image,
+            extracted.head.twitter.image,
+            finalImages,
+            extracted.body.jsonLdImages
+        );
+
+        const finalTitle = cleanText(extracted.head.title || extracted.body.h1 || 'Səhifə Başlığı Yoxdur');
+        const finalDescription = cleanText(extracted.head.description || (fullText ? fullText.substring(0, 200) : 'Təsvir tapılmadı'));
+        const finalSiteName = cleanText(extracted.head.site_name || extracted.head.open_graph.site_name || (new URL(targetUrl)).hostname);
+
+        const safeCanonicalCandidate = sanitizeHttpUrl(extracted.head.canonical);
+        const finalCanonical = safeCanonicalCandidate || targetUrl;
+        const safeFavicon = sanitizeHttpUrl(extracted.head.favicon) || `${new URL(targetUrl).origin}/favicon.ico`;
+
+        const hasVideo = safeVideoSources.length > 0;
+        const videoEmbeds = buildVideoEmbeds(safeVideoSources, 10);
+        const embedHtml = hasVideo
+            ? videoEmbeds.combinedHtml
+            : generateArticleEmbedHtml(finalTitle, finalDescription, thumbnail, targetUrl, finalSiteName);
+
+        const baseHead = {
+            title: finalTitle,
+            description: finalDescription,
+            site_name: finalSiteName,
+            canonical_url: finalCanonical,
+            favicon: safeFavicon,
+            author: cleanText(extracted.head.author) || '',
+            keywords: cleanText(extracted.head.keywords) || '',
+            language: extracted.head.language,
+            charset: extracted.head.charset,
+            open_graph: extracted.head.open_graph,
+            twitter: extracted.head.twitter,
+            json_ld: extracted.head.json_ld,
+            all_meta_tags: extracted.head.all_meta
+        };
+
+        const enrichedHead = normalizeArticleMetadata(baseHead, extracted.head, fullText);
 
         return {
             success: true,
             code: 200,
-            status: "ok",
+            status: 'ok',
             plan_type: plan,
             name: finalTitle,
             description: finalDescription,
             thumbnail_url: thumbnail,
-            favicon_url: extracted.head.favicon,
+            favicon_url: safeFavicon,
             canonical_url: finalCanonical,
-            author: extracted.head.author || null,
+            author: cleanText(extracted.head.author) || null,
             site_name: finalSiteName,
             embed_html: embedHtml,
             is_video: hasVideo,
-            head: {
-                title: finalTitle,
-                description: finalDescription,
-                site_name: finalSiteName,
-                canonical_url: finalCanonical,
-                favicon: extracted.head.favicon,
-                author: extracted.head.author,
-                keywords: extracted.head.keywords,
-                language: extracted.head.language,
-                charset: extracted.head.charset,
-                open_graph: extracted.head.open_graph,
-                twitter: extracted.head.twitter,
-                json_ld: extracted.head.json_ld,
-                all_meta_tags: extracted.head.all_meta
-            },
+            head: enrichedHead,
             deep_data: {
                 plan: plan,
                 error: null,
@@ -1014,118 +3199,368 @@ async function scrapeUniversalWeb(targetUrl, plan = "basic") {
                 images: finalImages,
                 classified_images: finalClassifiedImages,
                 links: finalLinks,
-                videoSources: extracted.body.videoSources,
+                videoSources: safeVideoSources,
                 has_video_sources: hasVideo
             }
         };
-
     } catch (err) {
-        if (browser) {
-            try { await browser.close(); } catch {}
-        }
+        await closeBrowserSafely(browser, browserId);
         throw err;
+    } finally {
+        if (signal) {
+            signal.removeEventListener('abort', onAbort);
+        }
+    }
+}
+
+async function scrapeUniversalWeb(targetUrl, plan = 'basic', deadline = null) {
+    await acquireBrowserSlot(deadline);
+    try {
+        return await runScrapeWithTimeout(targetUrl, plan, deadline);
+    } finally {
+        releaseBrowserSlot();
     }
 }
 
 // --------------------------------------------------------------------
-// 🚀 ƏSAS API ENDPOINT
+// 🧾 REQUEST VALIDATION FUNKSİYALARI
 // --------------------------------------------------------------------
-app.all(['/', '/scrape', '/extract'], verifyGatewayAuth, async (req, res) => {
-    const startTime = Date.now();
-
-    let targetUrl = req.body?.url || req.query?.url;
-    if (!targetUrl && typeof req.body === 'string') targetUrl = req.body;
-
-    if (!targetUrl || typeof targetUrl !== 'string') {
-        return res.status(400).json({
-            success: false,
-            code: 400,
-            status: "error",
-            error: "Zəhmət olmasa 'url' parametrini daxil edin (məsələn: { \"url\": \"https://example.com\" })"
-        });
+function validateRequestMethod(req) {
+    const method = String(req.method || '').toUpperCase();
+    if (method !== 'GET' && method !== 'POST') {
+        const err = new Error(`HTTP metodu (${method}) dəstəklənmir. Yalnız GET və POST istifadə edin.`);
+        err.statusCode = 405;
+        err.errorType = 'METHOD_NOT_ALLOWED';
+        throw err;
     }
+}
 
-    targetUrl = targetUrl.trim();
-    if (!/^https?:\/\//i.test(targetUrl)) {
-        targetUrl = 'https://' + targetUrl;
+function validateExtractRequest(req) {
+    const rawUrl = req.body?.url ?? req.query?.url;
+    if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        const err = new Error('Zəhmət olmasa "url" parametrini daxil edin (məsələn: { "url": "https://example.com" })');
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
     }
+    if (rawUrl.trim().length > MAX_URL_LENGTH) {
+        const err = new Error(`URL uzunluğu maksimum ${MAX_URL_LENGTH} simvoldan çox ola bilməz.`);
+        err.statusCode = 400;
+        err.errorType = 'VALIDATION_ERROR';
+        throw err;
+    }
+    return rawUrl.trim();
+}
 
-    targetUrl = await resolveShortUrl(targetUrl);
-    console.log("Emal olunmuş URL:", targetUrl);
+function normalizeTargetUrl(rawUrl) {
+    let normalized = String(rawUrl || '')
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .trim();
 
-    let parsed;
+    if (!/^https?:\/\//i.test(normalized)) {
+        normalized = 'https://' + normalized;
+    }
+    return normalized;
+}
+
+// --------------------------------------------------------------------
+// 🏥 HEALTH & READINESS ENDPOINT-LƏRİ
+// --------------------------------------------------------------------
+app.all(['/health', '/healrh'], (req, res) => {
+    return res.status(200).json(getPublicHealth());
+});
+
+app.get('/health/admin', verifyGatewayAuth, (req, res) => {
+    if (ENFORCE_GATEWAY_AUTH && req.authSource !== 'admin_test') {
+        return res.status(403).json(
+            createApiErrorResponse(403, 'Access denied. Admin credentials required.')
+        );
+    }
+    return res.status(200).json(getAdminHealth());
+});
+
+app.get('/ready', (req, res) => {
+    const readiness = checkReadiness();
+    return res.status(readiness.ready ? 200 : 503).json(readiness);
+});
+
+// --------------------------------------------------------------------
+// 🚀 ƏSAS API ENDPOINT (GET & POST: /, /scrape, /extract)
+// --------------------------------------------------------------------
+const apiRateLimiter = createRateLimitMiddleware();
+
+app.all(['/', '/scrape', '/extract'], (req, res, next) => {
+    const ctx = createRequestContext(req);
+    res.setHeader('X-Request-Id', ctx.requestId);
+    return next();
+}, verifyGatewayAuth, apiRateLimiter, async (req, res) => {
+    const ctx = req.requestContext || createRequestContext(req);
+    const startTime = ctx.startedAt;
+    const deadline = ctx.deadline;
+
     try {
-        parsed = new URL(targetUrl);
-        if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
-            return res.status(400).json({ success: false, code: 400, error: "Yalnız HTTP və HTTPS protokolları dəstəklənir." });
+        validateRequestMethod(req);
+        const rawUrl = validateExtractRequest(req);
+        let targetUrl = normalizeTargetUrl(rawUrl);
+
+        // 1. İlkin SSRF və DNS yoxlaması (short URL açılmadan əvvəl)
+        await validateTargetUrlSafety(targetUrl, deadline);
+
+        // 2. Qısa URL-lərin təhlükəsiz həlli (hər redirect hop-da DNS pinning + SSRF yoxlaması)
+        targetUrl = await resolveShortUrl(targetUrl, deadline);
+
+        // 3. Yekun URL-in təsdiqlənməsi
+        const parsed = await validateTargetUrlSafety(targetUrl, deadline);
+
+        // 4. Sosial şəbəkələrin dəqiq domen filtri
+        const hostnameLower = parsed.hostname.toLowerCase();
+        const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(
+            domain => hostnameLower === domain || hostnameLower.endsWith('.' + domain)
+        );
+
+        if (isSocialBlocked) {
+            const socialErr = new Error(
+                'Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles.'
+            );
+            socialErr.statusCode = 400;
+            socialErr.errorType = 'SOCIAL_BLOCKED';
+            throw socialErr;
         }
 
-        if (isPrivateOrBlockedIP(parsed.hostname)) {
-            return res.status(403).json({ success: false, code: 403, error: "Təhlükəsizlik səbəbilə daxili/lokal ünvanlara icazə verilmir." });
+        // 5. Təsdiqlənmiş abunə planının təyini
+        const plan = resolvePlan(req);
+
+        // 6. Scraping icrası (ümumi deadline büdcəsi ilə)
+        const rawResult = await scrapeUniversalWeb(targetUrl, plan, deadline);
+
+        if (!rawResult.success) {
+            rawResult.meta = {
+                request_id: ctx.requestId,
+                plan_type: plan,
+                response_time_ms: Date.now() - startTime,
+                timestamp: new Date().toISOString()
+            };
+            logScrapeEvent('warn', 'scrape_blocked', {
+                requestId: ctx.requestId,
+                code: rawResult.code,
+                host: hostnameLower,
+                plan,
+                duration_ms: Date.now() - startTime
+            });
+            return res.status(rawResult.code || 403).json(rawResult);
         }
-    } catch (e) {
-        return res.status(400).json({ success: false, code: 400, error: "Etibarsız URL formatı." });
-    }
 
-    // ====================================================
-    // 🌟 SOSİAL ŞƏBƏKƏLƏRİN BİRBAŞA BLOKLANMASI
-    // ====================================================
-    const BLOCKED_SOCIAL_DOMAINS = [
-        'youtube.com', 'youtu.be',
-        'tiktok.com',
-        'instagram.com',
-        'facebook.com',
-        'twitter.com', 'x.com'
-    ];
-
-    const hostnameLower = parsed.hostname.toLowerCase();
-    const isSocialBlocked = BLOCKED_SOCIAL_DOMAINS.some(
-        domain => hostnameLower === domain || hostnameLower.endsWith('.' + domain)
-    );
-
-    if (isSocialBlocked) {
-        return res.status(400).json({
-            success: false,
-            code: 400,
-            status: "error",
-            error: "Social media platforms (YouTube, TikTok, Instagram, etc.) are not supported by this API. Please use this API for standard web pages and articles."
-        });
-    }
-    // ====================================================
-
-    // 💡 PLAN TƏYİNİ
-    const rapidApiSub = req.headers['x-rapidapi-subscription'];
-    let plan = rapidApiSub ? rapidApiSub.toString().toLowerCase().trim() : "basic";
-    if (!PLAN_ACCESS[plan]) {
-        plan = "basic";
-    }
-
-    try {
-        const result = await scrapeUniversalWeb(targetUrl, plan);
-
-        result.meta = {
+        rawResult.meta = {
+            request_id: ctx.requestId,
             plan_type: plan,
             response_time_ms: Date.now() - startTime,
             timestamp: new Date().toISOString()
         };
 
-        return res.status(200).json(result);
+        // 7. Cavab ölçüsü limitləri (sərt 1.5 MB byte cap) və sanitarizasiya
+        const boundedResult = enforceResponseLimits(rawResult);
+        const finalResponse = sanitizeApiResponse(boundedResult);
 
+        logScrapeEvent('info', 'scrape_success', {
+            requestId: ctx.requestId,
+            host: hostnameLower,
+            plan,
+            authSource: req.authSource,
+            duration_ms: Date.now() - startTime
+        });
+
+        return res.status(200).json(finalResponse);
     } catch (err) {
-        return res.status(500).json({
-            success: false,
-            code: 500,
-            status: "error",
-            error: "Səhifə oxunarkən xəta baş verdi: " + (err.message || "Bilinməyən xəta"),
+        const classified = classifyScrapeError(err);
+        const statusCode = mapScrapeErrorToHttpStatus(classified.type, err.statusCode);
+        const errorResponse = createApiErrorResponse(statusCode, classified.message, {
+            request_id: ctx.requestId,
             response_time_ms: Date.now() - startTime
         });
+
+        logScrapeEvent('error', 'scrape_error', {
+            requestId: ctx.requestId,
+            type: classified.type,
+            code: statusCode,
+            message: classified.message,
+            duration_ms: Date.now() - startTime
+        });
+
+        return res.status(statusCode).json(errorResponse);
     }
 });
 
 // --------------------------------------------------------------------
-// 🚀 SERVERİ BAŞLAT
+// 🛑 ENVIRONMENT VALIDATION & GRACEFUL SHUTDOWN
 // --------------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Universal Web & Head Scraper API portda aktivdir: ${PORT}`);
-});
+function validateEnvironmentConfig() {
+    if (ENFORCE_GATEWAY_AUTH && !process.env.RAPIDAPI_PROXY_SECRET && !process.env.ADMIN_TEST_SECRET) {
+        logScrapeEvent('warn', 'missing_auth_secrets', {
+            detail: 'ENFORCE_GATEWAY_AUTH aktivdir, lakin RAPIDAPI_PROXY_SECRET və ADMIN_TEST_SECRET təyin edilməyib.'
+        });
+    }
+    if (IS_PRODUCTION && ALLOW_INSECURE_TLS) {
+        logScrapeEvent('warn', 'insecure_tls_enabled', {
+            detail: 'Production mühitində ALLOW_INSECURE_TLS=true təyin edilib.'
+        });
+    }
+    if (EGRESS_PROXY_URL) {
+        const proxyCfg = createEgressProxyConfig();
+        if (!proxyCfg.enabled) {
+            logScrapeEvent('warn', 'invalid_egress_proxy_url', {
+                detail: 'EGRESS_PROXY_URL formatı etibarsızdır və nəzərə alınmadı.'
+            });
+        }
+    }
+}
+
+async function flushAndCloseResources(httpServer) {
+    while (browserQueue.length > 0) {
+        const queued = browserQueue.shift();
+        const err = new Error('Server yenidən başladıldığı üçün növbə dayandırıldı.');
+        err.statusCode = 503;
+        err.errorType = 'QUEUE_FULL';
+        queued.reject(err);
+    }
+
+    const activeEntries = Array.from(activeBrowserRegistry.values());
+    if (activeEntries.length > 0) {
+        await Promise.allSettled(
+            activeEntries.map(entry => closeBrowserSafely(entry.browser, entry.id))
+        );
+    }
+
+    if (httpServer && typeof httpServer.close === 'function') {
+        await new Promise((resolve) => {
+            httpServer.close(() => resolve());
+        });
+    }
+}
+
+async function shutdownServerGracefully(httpServer, signalName = 'SIGTERM') {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logScrapeEvent('info', 'graceful_shutdown_started', {
+        signal: signalName,
+        ...getBrowserStats()
+    });
+
+    try {
+        await withTimeout(
+            flushAndCloseResources(httpServer),
+            8000,
+            'Graceful shutdown timeout',
+            500
+        );
+        logScrapeEvent('info', 'graceful_shutdown_completed', { signal: signalName });
+        process.exit(0);
+    } catch {
+        process.exit(1);
+    }
+}
+
+if (require.main === module) {
+    validateEnvironmentConfig();
+    const server = app.listen(PORT, '0.0.0.0', () => {
+        logScrapeEvent('info', 'server_started', {
+            port: PORT,
+            production: IS_PRODUCTION,
+            gatewayAuthEnforced: ENFORCE_GATEWAY_AUTH,
+            egressProxyEnabled: Boolean(EGRESS_PROXY_URL)
+        });
+    });
+
+    process.on('SIGTERM', () => shutdownServerGracefully(server, 'SIGTERM'));
+    process.on('SIGINT', () => shutdownServerGracefully(server, 'SIGINT'));
+}
+
+module.exports = {
+    app,
+    PLAN_CONTENT_LIMITS,
+    PLAN_ACCESS,
+    TECHNICAL_SAFETY_CAPS,
+    safeCompareSecret,
+    verifyGatewayAuth,
+    resolvePlan,
+    getPlanLimits,
+    getTechnicalSafetyLimits,
+    createRequestDeadline,
+    getRemainingTime,
+    createRequestContext,
+    withTimeout,
+    createScrapeAbortController,
+    throwIfAborted,
+    runScrapeWithTimeout,
+    ipToLong,
+    classifyIpAddress,
+    isGloballyRoutableIp,
+    isBlockedIpv4,
+    isBlockedIpv6,
+    isBlockedIpAddress,
+    isPublicIpAddress,
+    isPrivateOrBlockedIP,
+    validateResolvedAddress,
+    resolvePublicAddresses,
+    resolveAndValidateDns,
+    createPinnedLookup,
+    createEgressProxyConfig,
+    validateTargetUrlSafety,
+    validateRedirectTarget,
+    resolveShortUrl,
+    isAllowedRequestUrl,
+    installRequestSecurityGuards,
+    cleanText,
+    escapeHtml,
+    sanitizeHttpUrl,
+    isPlaceholderImage,
+    normalizeImageUrl,
+    scoreImageCandidate,
+    selectBestThumbnail,
+    validateVideoSource,
+    isAllowedEmbedHost,
+    normalizeEmbedUrl,
+    validateEmbedUrl,
+    sanitizeEmbedHtml,
+    generateArticleEmbedHtml,
+    buildVideoEmbeds,
+    isVideoMimeType,
+    collectVideoNetworkRequests,
+    detectCloudflareChallenge,
+    detectAccessDenied,
+    classifyScrapeError,
+    mapScrapeErrorToHttpStatus,
+    createApiErrorResponse,
+    getUtf8ByteLength,
+    enforceMetaLimits,
+    enforceJsonLdLimits,
+    createCompactResponseFallback,
+    fitResponseToByteLimit,
+    enforceResponseLimits,
+    extractArticleWordCount,
+    normalizeArticleMetadata,
+    sanitizeApiResponse,
+    acquireBrowserSlot,
+    releaseBrowserSlot,
+    registerActiveBrowser,
+    unregisterActiveBrowser,
+    terminateBrowserProcess,
+    closeBrowserSafely,
+    launchBrowserWithTimeout,
+    executeScrapeSession,
+    scrapeUniversalWeb,
+    validateRequestMethod,
+    validateExtractRequest,
+    normalizeTargetUrl,
+    configureSecurityHeaders,
+    configureCors,
+    createRateLimitMiddleware,
+    validateEnvironmentConfig,
+    flushAndCloseResources,
+    shutdownServerGracefully,
+    getPublicHealth,
+    getAdminHealth,
+    getServerHealth,
+    getBrowserStats,
+    checkReadiness,
+    logScrapeEvent
+};
