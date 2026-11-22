@@ -39,11 +39,6 @@ app.set('trust proxy', 1);
 // Yeni (Render-də ENFORCE_GATEWAY_AUTH=true yazılana qədər birbaşa giriş açıq qalır):
 const ENFORCE_GATEWAY_AUTH = String(process.env.ENFORCE_GATEWAY_AUTH || '').toLowerCase().trim() === 'true';
 
-// İstehsal mühitində (və ya ENFORCE_GATEWAY_AUTH=true olduqda) birbaşa sorğular bloklanır
-const ENFORCE_GATEWAY_AUTH = process.env.ENFORCE_GATEWAY_AUTH !== undefined
-    ? String(process.env.ENFORCE_GATEWAY_AUTH).toLowerCase().trim() === 'true'
-    : IS_PRODUCTION;
-
 // TLS sertifikat yoxlaması default olaraq aktivdir (false = təhlükəsiz)
 const ALLOW_INSECURE_TLS = String(process.env.ALLOW_INSECURE_TLS || '').toLowerCase().trim() === 'true';
 
