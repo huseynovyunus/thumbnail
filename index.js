@@ -36,7 +36,10 @@ app.set('trust proxy', 1);
 // --------------------------------------------------------------------
 // ⚙️ SERVER VƏ TEXNİKİ TƏHLÜKƏSİZLİK KONFİQURASİYASI
 // --------------------------------------------------------------------
-// Yeni (Render-də ENFORCE_GATEWAY_AUTH=true yazılana qədər birbaşa giriş açıq qalır):
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase().trim() === 'production';
+
+// Render-də ENFORCE_GATEWAY_AUTH=true yazılana qədər birbaşa giriş açıq qalır:
 const ENFORCE_GATEWAY_AUTH = String(process.env.ENFORCE_GATEWAY_AUTH || '').toLowerCase().trim() === 'true';
 
 // TLS sertifikat yoxlaması default olaraq aktivdir (false = təhlükəsiz)
