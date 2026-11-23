@@ -21,6 +21,7 @@
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "ipaddr.js": "^2.2.0",
+    "puppeteer-core": "^22.15.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
