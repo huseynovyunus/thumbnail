@@ -1,7 +1,4 @@
 # Smart Content Extractor API — modular source layout
-
-Bu layihə əvvəlki `index (40)(1).js` mənbəyinin funksional ardıcıllığını qoruyaraq 12 məntiqi JavaScript hissəsinə bölünmüş variantıdır.
-
 ## Qovluq strukturu
 
 - `src/parts/01-...js` — runtime və konfiqurasiya
