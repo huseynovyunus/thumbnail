@@ -1,5 +1,5 @@
 {
-  "name": "smart-content-extractor-api",
+  "name": "smart-content-extractor",
   "version": "1.1.0",
   "private": true,
   "description": "Modular source build for Smart Content Extractor API",
